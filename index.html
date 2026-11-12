@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Поток и гамма</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow reading column; a sticky chapter rail on top; each chapter is its own view (#hash). Formula blocks are "lab cards" with a mono tab. */
+:root{
+  --bg:#F2F4F6; --surface:#FFFFFF; --sunk:#E8ECF0; --ink:#13202B; --muted:#56687A; --line:#D5DDE4;
+  --accent:#2F49C9; --accent-soft:#E3E8FB;
+  --buy:#0B8565; --buy-soft:#DDF2EA; --sell:#C7432F; --sell-soft:#FBE3DE; --gamma:#A8670E; --gamma-soft:#FBEED8;
+  --f-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1318; --surface:#151E26; --sunk:#1B2630; --ink:#E2E9EF; --muted:#94A4B2; --line:#283541;
+  --accent:#93A6FF; --accent-soft:#1F2850;
+  --buy:#3CC79D; --buy-soft:#123328; --sell:#F27B67; --sell-soft:#3A1C17; --gamma:#E5A84B; --gamma-soft:#3A2A12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1318; --surface:#151E26; --sunk:#1B2630; --ink:#E2E9EF; --muted:#94A4B2; --line:#283541;
+  --accent:#93A6FF; --accent-soft:#1F2850;
+  --buy:#3CC79D; --buy-soft:#123328; --sell:#F27B67; --sell-soft:#3A1C17; --gamma:#E5A84B; --gamma-soft:#3A2A12; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16.5px;line-height:1.62;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+a{color:var(--accent)}
+h1,h2,h3{text-wrap:balance;line-height:1.2}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(1.6rem,6vw,2.4rem);letter-spacing:-.01em;margin:0}
+h2{font-family:var(--f-display);font-weight:500;font-size:clamp(1.25rem,4.6vw,1.6rem);margin:2.4rem 0 .6rem}
+h3{font-size:1.12rem;font-weight:700;margin:1.8rem 0 .4rem}
+p{margin:.6rem 0}
+ul,ol{padding-left:1.3rem;margin:.5rem 0}
+li{margin:.25rem 0}
+code,.mono{font-family:var(--f-mono);font-size:.88em}
+b,strong{font-weight:650}
+.wrap{max-width:780px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* top rail */
+.rail{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.rail .wrap{display:flex;align-items:center;gap:10px;padding-block:8px}
+.brand{font-family:var(--f-display);font-weight:700;font-size:.82rem;white-space:nowrap;text-decoration:none;color:var(--ink)}
+.brand span{color:var(--gamma)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;padding:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{font:600 .8rem var(--f-body);white-space:nowrap;padding:6px 11px;border-radius:999px;border:1px solid var(--line);color:var(--muted);text-decoration:none;background:var(--bg)}
+.chip[aria-current="page"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+main{padding-block:18px 60px}
+section.ch{display:none}
+section.ch.on{display:block}
+.eyebrow{font:600 .74rem var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lead{font-size:1.08rem;color:var(--ink)}
+.muted{color:var(--muted)}
+.key{background:var(--accent-soft);border-radius:var(--r);padding:12px 14px;margin:1rem 0}
+.warn{background:var(--sell-soft);border-radius:var(--r);padding:12px 14px;margin:1rem 0}
+.good{background:var(--buy-soft);border-radius:var(--r);padding:12px 14px;margin:1rem 0}
+.key>:first-child,.warn>:first-child,.good>:first-child{margin-top:0}
+.key>:last-child,.warn>:last-child,.good>:last-child{margin-bottom:0}
+.buy{color:var(--buy);font-weight:650}.sell{color:var(--sell);font-weight:650}.gam{color:var(--gamma);font-weight:650}
+
+/* formula card */
+.fx{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin:1.3rem 0;overflow:hidden}
+.fx-h{font:600 .74rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;background:var(--sunk);color:var(--muted);padding:7px 14px;border-bottom:1px solid var(--line)}
+.fx-b{padding:4px 14px 12px}
+.fx-eq{overflow-x:auto;overflow-y:hidden;padding:4px 0;font-size:1.05rem}
+.fx dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:.4rem 0;align-items:baseline}
+.fx dt{font-weight:600;white-space:nowrap}
+.fx dd{margin:0;min-width:0}
+.fx .t{font:600 .74rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:.9rem}
+.fx ol{counter-reset:none}
+.fx ol li::marker{font-family:var(--f-mono);color:var(--muted)}
+.pro{border-top:1px dashed var(--line);margin-top:.8rem;padding-top:.6rem;font-size:.95rem}
+.pro::before{content:"Как говорят профи";display:block;font:600 .72rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--gamma)}
+
+/* tables */
+.tbl{overflow-x:auto;margin:1rem 0;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.92rem;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-weight:650;background:var(--sunk);font-size:.82rem}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-size:.85rem}
+
+/* widgets */
+.lab{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin:1.4rem 0;padding:12px 14px}
+.lab-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.lab-h b{font-family:var(--f-display);font-weight:500;font-size:.98rem}
+.lab-h span{font:600 .7rem var(--f-mono);color:var(--gamma);letter-spacing:.06em;text-transform:uppercase}
+.ctrl{display:grid;grid-template-columns:1fr;gap:10px;margin:8px 0}
+@media (min-width:560px){.ctrl{grid-template-columns:1fr 1fr}}
+.ctrl label{display:flex;flex-direction:column;gap:2px;font-size:.85rem;color:var(--muted);min-width:0}
+.ctrl label output{font:600 .9rem var(--f-mono);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.seg button,.btn{font:600 .84rem var(--f-body);padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;min-height:38px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.out{font-variant-numeric:tabular-nums;font-size:.92rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0}
+.stat{background:var(--sunk);border-radius:8px;padding:8px 10px;min-width:0}
+.stat small{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat b{font:600 1.02rem var(--f-mono)}
+.plot{width:100%;height:300px}
+.plot3d{width:100%;height:min(440px,95vw);touch-action:none}
+.hint{font-size:.8rem;color:var(--muted)}
+
+/* ladder */
+.ladder{width:100%;max-width:420px;margin:6px auto;font-family:var(--f-mono);font-size:.85rem}
+.ladder td{padding:4px 8px;text-align:right}
+.ladder .px{text-align:center;font-weight:600;background:var(--sunk)}
+.ladder .a{color:var(--sell)}.ladder .b{color:var(--buy)}
+.ladder tr.eaten td.a{background:var(--sell-soft);text-decoration:line-through}
+.ladder tr.part td.a{background:var(--sell-soft)}
+
+/* footprint */
+.fp{margin:8px auto;border-collapse:separate;border-spacing:0 2px;font-family:var(--f-mono);font-size:.85rem;width:auto}
+.fp td{padding:3px 10px;border:0;text-align:right}
+.fp td.p{color:var(--muted);text-align:left}
+.fp td.bid{background:var(--sunk);border-radius:6px 0 0 6px}
+.fp td.ask{background:var(--sunk);border-radius:0 6px 6px 0;text-align:left}
+.fp td.hi-s{background:var(--sell-soft);color:var(--sell);font-weight:700}
+.fp td.hi-b{background:var(--buy-soft);color:var(--buy);font-weight:700}
+.fp tr.poc td.p{color:var(--gamma);font-weight:700}
+
+/* profile */
+.vp{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;font:500 .78rem var(--f-mono);align-items:center}
+.vp .bar{height:14px;background:var(--line);border-radius:3px}
+.vp .bar.va{background:var(--accent);opacity:.55}
+.vp .bar.poc{background:var(--gamma);opacity:1}
+
+/* sequence */
+.seq{display:grid;grid-template-columns:1fr;gap:8px;margin:1rem 0;counter-reset:s}
+@media (min-width:620px){.seq{grid-template-columns:repeat(4,1fr)}}
+.seq div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;counter-increment:s;min-width:0}
+.seq div::before{content:counter(s);font:700 .8rem var(--f-mono);color:var(--gamma);display:block}
+.seq b{display:block}
+.seq small{color:var(--muted);font-size:.85rem;line-height:1.4;display:block}
+
+/* setup cards */
+.setup{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:1rem 0}
+.setup h3{margin:0 0 .3rem}
+.setup dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:.3rem 0}
+.setup dt{font:600 .74rem var(--f-mono);text-transform:uppercase;color:var(--muted);letter-spacing:.05em;padding-top:3px}
+.setup dd{margin:0;min-width:0}
+
+/* trainer */
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:1rem 0}
+.q .qt{font:600 .7rem var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.q .qt .st.ok{color:var(--buy)}.q .qt .st.bad{color:var(--sell)}
+.q .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.q input[type=text]{font:500 1rem var(--f-mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:150px}
+.q .opts{display:grid;gap:6px;margin-top:8px}
+.q .opts button{text-align:left;font:500 .92rem var(--f-body);padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.q .opts button.ok{border-color:var(--buy);background:var(--buy-soft)}
+.q .opts button.bad{border-color:var(--sell);background:var(--sell-soft)}
+.q .sol{margin-top:10px;background:var(--sunk);border-radius:8px;padding:10px 12px;font-size:.94rem}
+.q .sol ol{margin:.3rem 0}
+.score{position:sticky;top:calc(env(safe-area-inset-top,0px) + 52px);z-index:5;background:var(--bg);padding:6px 0;font:600 .85rem var(--f-mono)}
+
+.pager{display:flex;justify-content:space-between;gap:10px;margin-top:2.4rem;flex-wrap:wrap}
+.pager a{flex:1 1 200px;text-decoration:none;border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;background:var(--surface);color:var(--ink)}
+.pager a small{display:block;color:var(--muted);font-size:.75rem}
+.pager a.nx{text-align:right}
+.toc{display:grid;gap:8px;margin:1rem 0}
+.toc a{display:grid;grid-template-columns:2.2rem 1fr;gap:4px 10px;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.toc a span{font:700 .9rem var(--f-mono);color:var(--gamma);grid-row:span 2}
+.toc a small{color:var(--muted);font-size:.85rem}
+mjx-container{max-width:100%}
+mjx-container[display="true"]{overflow-x:auto;overflow-y:hidden;margin:.5em 0!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+</head>
+<body>
+<header class="rail">
+  <div class="wrap">
+    <a class="brand" href="#start">Поток<span>·</span>Гамма</a>
+    <nav class="chips" id="chips" aria-label="Главы">
+      <a class="chip" href="#start">Старт</a>
+      <a class="chip" href="#orderflow">1 Ордер флоу</a>
+      <a class="chip" href="#options">2 Опционы</a>
+      <a class="chip" href="#gex">3 GEX</a>
+      <a class="chip" href="#surfaces">4 3D</a>
+      <a class="chip" href="#playbook">5 Торговля</a>
+      <a class="chip" href="#trainer">6 Тренажёр</a>
+      <a class="chip" href="#limits">7 Ограничения</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ START ============ -->
+<section class="ch" id="start" data-title="Старт">
+  <p class="eyebrow">Курс для фьючерсов NQ/MNQ и ES/MES</p>
+  <h1>Поток и гамма</h1>
+  <p class="lead">Ордер флоу показывает, <b>кто сейчас давит на цену</b>. Опционный поток и GEX показывают, <b>как крупные дилеры будут вынуждены торговать</b>, когда цена сдвинется. Вместе это карта: где ждать сделку и что должно случиться, чтобы в неё войти.</p>
+
+  <p>Каждая формула здесь разобрана одинаково: сама формула, что значит каждая буква, пример с числами по шагам и как это звучит у профессионалов. Все графики живые: двигай ползунки, а трёхмерные поверхности крути пальцем.</p>
+
+  <h2>Как это складывается в сделку</h2>
+  <div class="seq">
+    <div><b>Режим дня</b><small>GEX положительный или отрицательный? Ждём «пилу» в диапазоне или тренд.</small></div>
+    <div><b>Уровни</b><small>Call wall, put wall, gamma flip, POC и края value area вчерашнего дня.</small></div>
+    <div><b>Триггер</b><small>У уровня читаем ленту: абсорбция, имбалансы, дельта против цены.</small></div>
+    <div><b>Риск</b><small>Стоп за экстремум, размер позиции из суммы риска, цель на следующем уровне.</small></div>
+  </div>
+
+  <h2>Главы</h2>
+  <div class="toc">
+    <a href="#orderflow"><span>1</span><b>Ордер флоу с нуля</b><small>Стакан, лента, дельта, футпринт, профиль объёма, абсорбция, айсберги, спуфинг</small></a>
+    <a href="#options"><span>2</span><b>Опционы и опционный поток</b><small>Цена опциона, греки, implied volatility, OI и объём, sweeps и blocks, хеджирование дилеров</small></a>
+    <a href="#gex"><span>3</span><b>GEX: гамма-экспозиция</b><small>Расчёт по страйкам, gamma flip, call и put wall, режимы, vanna и charm</small></a>
+    <a href="#surfaces"><span>4</span><b>3D-поверхности</b><small>Цена опциона как поверхность, поверхность IV, skew, term structure, поверхность GEX</small></a>
+    <a href="#playbook"><span>5</span><b>Как торговать</b><small>Распорядок дня, четыре сетапа, вход, стоп, цель, размер позиции под проп</small></a>
+    <a href="#trainer"><span>6</span><b>Тренажёр</b><small>Задачи с проверкой ответа и разбором решения</small></a>
+    <a href="#limits"><span>7</span><b>Ограничения и данные</b><small>Что нужно купить, сколько стоит, где метод не работает</small></a>
+  </div>
+
+  <div class="warn">
+    <p><b>Сразу о главном.</b> Ни ордер флоу, ни GEX не дают «стабильные 5–10% в месяц». Это инструменты чтения рынка. Преимущество появляется только после сотен сделок в журнале и проверки на истории. И отдельно для CFD: у брокерского NAS100 на MT5 нет настоящего биржевого объёма, поэтому ордер флоу читают по фьючерсу NQ на CME, а уровни переносят на CFD. Подробно в главе 7.</p>
+  </div>
+</section>
+
+<!-- ============ 1 ORDER FLOW ============ -->
+<section class="ch" id="orderflow" data-title="Ордер флоу">
+  <p class="eyebrow">Глава 1</p>
+  <h1>Ордер флоу с нуля</h1>
+  <p class="lead">Ордер флоу (order flow, «поток заявок») — это чтение того, какие заявки приходят на биржу прямо сейчас и кто из участников уступает.</p>
+
+  <h2>1.1 Рынок как аукцион</h2>
+  <p>На бирже есть два типа заявок, и от этого различия зависит вся глава.</p>
+  <ul>
+    <li><b>Лимитная заявка</b> (пассивная): «куплю 5 контрактов по 20 000, не дороже». Она встаёт в очередь и ждёт. Такие заявки <b>дают ликвидность</b>: на них можно торговать.</li>
+    <li><b>Рыночная заявка</b> (агрессивная): «купи 5 контрактов прямо сейчас по любой лучшей цене». Она мгновенно исполняется о стоящие лимитки и <b>забирает ликвидность</b>.</li>
+  </ul>
+  <p>Каждая сделка на бирже — это встреча одного агрессора и одного пассивного участника. Того, кто пришёл с рыночной заявкой, называют <b>агрессором</b> (aggressor), и биржа CME помечает в каждой сделке, с какой он стороны.</p>
+  <div class="key"><p><b>Главная мысль главы.</b> Цену двигают агрессоры, а останавливают пассивные. Цена сдвигается на тик вверх только тогда, когда покупатели съели <i>все</i> лимитки на продажу на текущей цене.</p></div>
+
+  <h2>1.2 Стакан (DOM)</h2>
+  <p>Стакан (DOM, depth of market, «глубина рынка») — список лимитных заявок, которые сейчас стоят на каждой цене.</p>
+  <ul>
+    <li><b>Bid</b> (бид) — лучшая цена, по которой кто-то готов <span class="buy">купить</span>. Ниже стоят остальные покупатели.</li>
+    <li><b>Ask</b> (аск, offer) — лучшая цена, по которой кто-то готов <span class="sell">продать</span>. Выше стоят остальные продавцы.</li>
+    <li><b>Спред</b> = ask − bid. У NQ и ES в основную сессию он почти всегда равен одному тику.</li>
+    <li><b>Тик</b> — минимальный шаг цены.</li>
+  </ul>
+  <div class="tbl"><table>
+    <tr><th>Контракт</th><th class="n">Тик, пунктов</th><th class="n">$ за тик</th><th class="n">$ за 1 пункт</th></tr>
+    <tr><td>NQ (Nasdaq-100)</td><td class="n">0,25</td><td class="n">5,00</td><td class="n">20</td></tr>
+    <tr><td>MNQ (микро NQ)</td><td class="n">0,25</td><td class="n">0,50</td><td class="n">2</td></tr>
+    <tr><td>ES (S&amp;P 500)</td><td class="n">0,25</td><td class="n">12,50</td><td class="n">50</td></tr>
+    <tr><td>MES (микро ES)</td><td class="n">0,25</td><td class="n">1,25</td><td class="n">5</td></tr>
+  </table></div>
+
+  <div class="lab" id="w-book">
+    <div class="lab-h"><b>Рыночная покупка съедает стакан</b><span>интерактив</span></div>
+    <div class="ctrl"><label for="bookQ">Размер рыночной покупки, контрактов NQ <output id="bookQo">20</output><input type="range" id="bookQ" min="1" max="90" value="20"></label></div>
+    <div class="tbl" style="border:0;background:none"><table class="ladder" id="bookT"></table></div>
+    <div class="stats" id="bookS"></div>
+    <p class="hint">Красным перечёркнуты уровни продавцов, которые покупатель съел целиком. Сделай заявку больше и посмотри, как растёт проскальзывание.</p>
+  </div>
+
+  <div class="fx">
+    <div class="fx-h">Формула · средняя цена исполнения и проскальзывание</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \bar P=\frac{\sum_i p_i\,q_i}{\sum_i q_i},\qquad \text{слип}=\frac{\bar P-P_{ask}}{0{,}25}\ \text{тиков} \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(\bar P\)</dt><dd>«P с чертой» — средняя цена, по которой реально купили.</dd>
+        <dt>\(p_i\)</dt><dd>цена на i-м уровне стакана, который задела заявка (i — просто номер уровня: 1, 2, 3…).</dd>
+        <dt>\(q_i\)</dt><dd>сколько контрактов взяли на этом уровне.</dd>
+        <dt>\(\sum_i\)</dt><dd>«сигма» — сложить по всем уровням.</dd>
+        <dt>\(P_{ask}\)</dt><dd>лучший аск до сделки — цена, которую ты видел на экране.</dd>
+        <dt>слип</dt><dd>проскальзывание: насколько хуже экрана ты купил, в тиках.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Аск 20 000,00 — 8 контрактов, 20 000,25 — 12, 20 000,50 — 15. Покупаем 20 рыночной.</li>
+        <li>8 штук берём по 20 000,00 и 12 штук по 20 000,25. Всего 8 + 12 = 20.</li>
+        <li>Числитель: 20 000,00 × 8 + 20 000,25 × 12 = 160 000 + 240 003 = 400 003.</li>
+        <li>\(\bar P\) = 400 003 / 20 = 20 000,15.</li>
+        <li>Слип = (20 000,15 − 20 000,00) / 0,25 = 0,6 тика. На NQ это 0,6 × $5 × 20 = $60 на всю позицию.</li>
+      </ol>
+      <p class="pro">«Взял двадцать лотов маркетом, проскользнул на полтика в среднем: на оффере было мало, пришлось лезть на второй уровень».</p>
+    </div>
+  </div>
+  <div class="warn"><p><b>Стакан врёт чаще, чем лента.</b> Лимитку можно снять за миллисекунду, поэтому крупный объём в стакане — это намерение, а не факт. Сделка в ленте уже случилась. Поэтому решения принимают по исполненным сделкам, а стакан используют как фон.</p></div>
+
+  <h2>1.3 Лента сделок (Time &amp; Sales)</h2>
+  <p>Лента — это журнал каждой исполненной сделки: время, цена, количество и сторона агрессора.</p>
+  <ul>
+    <li>Сделка <b>по аску</b> → агрессор был <span class="buy">покупателем</span> (он «поднял оффер»).</li>
+    <li>Сделка <b>по биду</b> → агрессор был <span class="sell">продавцом</span> (он «ударил в бид»).</li>
+  </ul>
+  <p>Одна большая рыночная заявка в ленте часто выглядит как пачка мелких сделок в одну миллисекунду: она исполнилась о многих разных лимиток. Хорошие платформы склеивают такие пачки обратно (опция «объединять сделки» или «aggregated prints»). Без этой склейки ты не увидишь крупного игрока.</p>
+
+  <h2>1.4 Дельта и кумулятивная дельта</h2>
+  <div class="fx">
+    <div class="fx-h">Формула · дельта бара</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \Delta = V_{ask} - V_{bid} \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(\Delta\)</dt><dd>«дельта» (греческая D). В ордер флоу — перевес агрессивных покупок над агрессивными продажами. С дельтой опциона из главы 2 это <b>разные</b> вещи, просто одно слово.</dd>
+        <dt>\(V_{ask}\)</dt><dd>объём (V — volume) сделок по аску, то есть рыночные покупки.</dd>
+        <dt>\(V_{bid}\)</dt><dd>объём сделок по биду, то есть рыночные продажи.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>За 5-минутный бар по аску прошло 1 840 контрактов, по биду 1 310.</li>
+        <li>\(\Delta\) = 1 840 − 1 310 = +530.</li>
+        <li>Плюс значит: рыночных покупок было больше на 530 контрактов. Покупатели были агрессивнее.</li>
+      </ol>
+      <p class="pro">«Бар закрылся с дельтой плюс пятьсот тридцать — покупатели лезли в оффер».</p>
+    </div>
+  </div>
+
+  <div class="fx">
+    <div class="fx-h">Формула · кумулятивная дельта (CVD)</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{CVD}_t=\sum_{k=1}^{t}\Delta_k=\text{CVD}_{t-1}+\Delta_t \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>CVD</dt><dd>cumulative volume delta, накопленная дельта с начала сессии.</dd>
+        <dt>\(t\)</dt><dd>номер текущего бара.</dd>
+        <dt>\(k\)</dt><dd>счётчик, бегущий от первого бара (k = 1) до текущего (k = t).</dd>
+        <dt>\(\Delta_k\)</dt><dd>дельта k-го бара.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Дельты трёх баров: +530, −200, +120.</li>
+        <li>CVD после 1-го: 530. После 2-го: 530 − 200 = 330. После 3-го: 330 + 120 = 450.</li>
+        <li>Линия CVD рисуется как отдельный график под ценой.</li>
+      </ol>
+      <p class="pro">«CVD с открытия плюс четыреста пятьдесят, но цена стоит — покупки кто-то поглощает».</p>
+    </div>
+  </div>
+  <p>Ценность CVD в сравнении с ценой. Самые полезные случаи:</p>
+  <ul>
+    <li><b>Подтверждение:</b> цена делает новый максимум, CVD тоже. Покупатели реально толкают цену.</li>
+    <li><b>Дивергенция:</b> цена делает новый максимум, а CVD — нет. Рост идёт на слабой агрессии (например, продавцы просто убрали лимитки). Такой рост легче развернуть.</li>
+    <li><b>Абсорбция:</b> CVD сильно растёт, а цена стоит. Кто-то крупный продаёт лимитками в каждую покупку.</li>
+  </ul>
+  <div class="lab" id="w-cvd">
+    <div class="lab-h"><b>Цена против CVD</b><span>учебные данные</span></div>
+    <div class="seg" role="group" aria-label="Сценарий"><button data-s="confirm" aria-pressed="true">Подтверждение</button><button data-s="div">Дивергенция</button><button data-s="abs">Абсорбция</button></div>
+    <div class="plot" id="cvdPlot"></div>
+    <p class="hint" id="cvdNote"></p>
+  </div>
+
+  <h2>1.5 Футпринт и кластеры</h2>
+  <p>Футпринт (footprint, «след»; в русских платформах — кластерный график) показывает внутри каждой свечи объём по каждой цене, разделённый на продажи по биду и покупки по аску. Запись «310 × 95» на цене значит: 310 контрактов продали рыночными по биду, 95 купили рыночными по аску.</p>
+  <p>Сравнивать надо <b>по диагонали</b>. Покупатель на цене p платит аск, а аск всегда на тик выше бида. Поэтому покупки на цене p сравнивают с продажами на цене p − 1 тик.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · диагональный имбаланс</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{Imb}_{buy}(p)=\frac{A(p)}{B(p-\text{тик})}\ \ge\ R \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(A(p)\)</dt><dd>покупки по аску на цене p.</dd>
+        <dt>\(B(p-\text{тик})\)</dt><dd>продажи по биду на один тик ниже.</dd>
+        <dt>\(R\)</dt><dd>порог. Обычно 3, то есть 300%: покупателей втрое больше.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>На 20 010,50 по аску купили 420. На 20 010,25 по биду продали 110.</li>
+        <li>420 / 110 = 3,82.</li>
+        <li>3,82 ≥ 3 → имбаланс покупок на 20 010,50. Для продаж зеркально: \(B(p)/A(p+\text{тик})\ge R\).</li>
+        <li>Три и более имбаланса подряд по ценам называют <b>стеком имбалансов</b>. Это зона, где одна сторона полностью доминировала. При возврате цены туда она часто работает как поддержка или сопротивление.</li>
+      </ol>
+      <p class="pro">«Сверху стек бай-имбалансов на три уровня, на ретесте жду защиту».</p>
+    </div>
+  </div>
+  <div class="lab" id="w-fp">
+    <div class="lab-h"><b>Одна свеча в футпринте</b><span>интерактив</span></div>
+    <div class="ctrl"><label for="fpR">Порог имбаланса R <output id="fpRo">3,0</output><input type="range" id="fpR" min="1.5" max="5" step="0.5" value="3"></label></div>
+    <div style="overflow-x:auto"><table class="fp" id="fpT"></table></div>
+    <div class="stats" id="fpS"></div>
+    <p class="hint">Слева продажи по биду, справа покупки по аску. Подсвечены диагональные имбалансы. Золотая цена — POC свечи, уровень с наибольшим объёмом.</p>
+  </div>
+
+  <h2>1.6 Профиль объёма: POC, value area, VWAP</h2>
+  <p>Профиль объёма (volume profile) — гистограмма «сколько контрактов прошло на каждой цене» за сессию, повёрнутая боком.</p>
+  <ul>
+    <li><b>POC</b> (point of control) — цена с максимальным объёмом. «Самая справедливая» цена дня, там больше всего договорились.</li>
+    <li><b>Value area</b> (VA, зона стоимости) — диапазон вокруг POC, где прошло 70% объёма. Верх называют <b>VAH</b>, низ <b>VAL</b>.</li>
+    <li><b>HVN / LVN</b> — узлы высокого и низкого объёма. Через LVN цена обычно пролетает быстро, в HVN вязнет.</li>
+  </ul>
+  <div class="fx">
+    <div class="fx-h">Алгоритм · value area 70%</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \sum_{p\in VA}V(p)\ \ge\ 0{,}7\cdot\sum_{\text{все }p}V(p) \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(V(p)\)</dt><dd>объём на цене p.</dd>
+        <dt>\(p\in VA\)</dt><dd>«p принадлежит VA» — цены, которые уже включили в зону.</dd>
+        <dt>0,7</dt><dd>70% — договорённость из классического Market Profile, а не закон природы.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Весь объём сессии 10 000. Цель — набрать 7 000.</li>
+        <li>Начинаем с POC: там 1 400.</li>
+        <li>Смотрим два уровня выше и два уровня ниже, берём ту пару, где объём больше, и добавляем её.</li>
+        <li>Повторяем, пока сумма не достигнет 7 000. Самая верхняя взятая цена — VAH, самая нижняя — VAL.</li>
+      </ol>
+      <p class="pro">«Открылись внутри вчерашнего вэлью — ждём ротацию от VAH к VAL. Принятие выше VAH — значит, рынок ищет новую стоимость».</p>
+    </div>
+  </div>
+  <div class="lab" id="w-vp">
+    <div class="lab-h"><b>Профиль сессии</b><span>расчёт VA</span></div>
+    <div class="seg" role="group" aria-label="Форма профиля"><button data-v="d" aria-pressed="true">Нормальный день</button><button data-v="p">P-профиль</button><button data-v="b">Двойное распределение</button></div>
+    <div class="vp" id="vpBox"></div>
+    <div class="stats" id="vpS"></div>
+  </div>
+  <div class="fx">
+    <div class="fx-h">Формула · VWAP</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{VWAP}=\frac{\sum_i p_i\,v_i}{\sum_i v_i} \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>VWAP</dt><dd>volume weighted average price — средняя цена дня, взвешенная по объёму.</dd>
+        <dt>\(p_i, v_i\)</dt><dd>цена и объём i-й сделки (или i-го бара).</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Три бара: 20 000 × 1 000, 20 020 × 3 000, 20 010 × 2 000.</li>
+        <li>Числитель: 20 000 000 + 60 060 000 + 40 020 000 = 120 080 000.</li>
+        <li>Знаменатель: 6 000. VWAP = 120 080 000 / 6 000 ≈ 20 013,3.</li>
+      </ol>
+      <p class="pro">«Цена выше VWAP и VWAP растёт — покупатели контролируют день. Алгоритмы фондов исполняются вокруг VWAP».</p>
+    </div>
+  </div>
+
+  <h2>1.7 Что ищут в потоке</h2>
+  <h3>Абсорбция (поглощение)</h3>
+  <p>Агрессоры давят, объём огромный, дельта сильно в одну сторону, а цена почти не двигается. Значит, с другой стороны стоит крупный лимитный участник и забирает всё. Абсорбция продаж у поддержки — признак, что вниз пускать не хотят.</p>
+  <h3>Айсберг</h3>
+  <p>Лимитная заявка, у которой в стакане видна только малая часть. Когда видимую часть съедают, она тут же снова появляется.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · оценка скрытого объёма айсберга</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ V_{hidden}\approx V_{traded}(p)-V_{shown}(p) \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(V_{traded}(p)\)</dt><dd>сколько реально исполнилось на этой цене (из ленты).</dd>
+        <dt>\(V_{shown}(p)\)</dt><dd>сколько максимум было видно в стакане на этой цене.</dd>
+        <dt>\(V_{hidden}\)</dt><dd>примерный скрытый объём.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>На бид 20 000,00 в стакане всё время стоит около 15 контрактов.</li>
+        <li>За две минуты по этой цене продали рыночными 640 контрактов, а цена ниже не ушла.</li>
+        <li>\(V_{hidden}\) ≈ 640 − 15 = 625. Кто-то купил ~625 контрактов, не показывая их.</li>
+      </ol>
+      <p class="pro">«На двадцатке сидит айсберг в бид, рефилл каждые десять лотов, съели шестьсот и не пробили».</p>
+    </div>
+  </div>
+  <h3>Спуфинг</h3>
+  <p>Крупные заявки, которые выставляют, чтобы их увидели, и снимают до исполнения. Цель — напугать или заманить. В США это запрещено законом (Dodd-Frank, 2010), но встречается. Практический вывод: <b>большая стенка в стакане без сделок по ней — не уровень</b>. Уровень подтверждает только исполненный объём.</p>
+  <h3>Истощение (exhaustion)</h3>
+  <p>На краю движения агрессия затухает: у максимума свечи покупки по аску 3, 1, 0 контрактов. Покупатели кончились. Часто это видно как «незавершённый аукцион» наоборот — крайние цены с почти нулевым объёмом.</p>
+  <h3>Ловушка (trapped traders)</h3>
+  <p>Мощная агрессия пробивает уровень, но цена тут же возвращается. Все, кто купил на пробое, в убытке, и их стопы становятся топливом для движения в обратную сторону.</p>
+  <h3>Охота за стопами (stop run)</h3>
+  <p>Быстрый прокол очевидного экстремума (вчерашний минимум, круглая цифра) с всплеском объёма и возвратом. Стопы — это рыночные заявки, поэтому прокол даёт крупному игроку ликвидность для входа.</p>
+  <p class="muted">Как превратить это в сделки, — в главе 5. Сначала разберём вторую половину карты: опционы.</p>
+</section>
+
+<!-- ============ 2 OPTIONS ============ -->
+<section class="ch" id="options" data-title="Опционы">
+  <p class="eyebrow">Глава 2</p>
+  <h1>Опционы и опционный поток</h1>
+  <p class="lead">Чтобы понять GEX, нужно понять, кто продаёт опционы и что ему приходится делать, чтобы не разориться. Начинаем с самого опциона.</p>
+
+  <h2>2.1 Что такое опцион</h2>
+  <ul>
+    <li><b>Колл</b> (call) — право <i>купить</i> актив по фиксированной цене до даты.</li>
+    <li><b>Пут</b> (put) — право <i>продать</i> актив по фиксированной цене.</li>
+    <li><b>Страйк</b> K — эта фиксированная цена.</li>
+    <li><b>Экспирация</b> — дата, когда право сгорает. 0DTE (zero days to expiration) — опционы, которые истекают сегодня.</li>
+    <li><b>Премия</b> — цена опциона. На SPX и SPY один контракт = 100 единиц, поэтому премия 3,50 стоит $350.</li>
+  </ul>
+  <div class="fx">
+    <div class="fx-h">Формула · выплата на экспирации</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{Call}_T=\max(S_T-K,\,0),\qquad \text{Put}_T=\max(K-S_T,\,0) \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(S_T\)</dt><dd>цена актива в момент экспирации T.</dd>
+        <dt>\(K\)</dt><dd>страйк.</dd>
+        <dt>max(a, 0)</dt><dd>берём большее из двух: если a отрицательное, получаем ноль. Опцион не может стоить меньше нуля, ведь правом можно не пользоваться.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Колл со страйком 5 800, на экспирации SPX = 5 830.</li>
+        <li>5 830 − 5 800 = 30. max(30, 0) = 30 пунктов, то есть $3 000 на контракт.</li>
+        <li>Если бы SPX был 5 780: 5 780 − 5 800 = −20, max(−20, 0) = 0. Опцион сгорел.</li>
+      </ol>
+      <p class="pro">«Колл закрылся в деньгах на тридцать пунктов».</p>
+    </div>
+  </div>
+  <p>До экспирации цена опциона = <b>внутренняя стоимость</b> (то, что дал бы опцион прямо сейчас) + <b>временная стоимость</b> (плата за шанс, что станет ещё лучше). Опцион со страйком у текущей цены называют <b>ATM</b> (at the money), выгодный сейчас — <b>ITM</b> (in the money), невыгодный — <b>OTM</b> (out of the money).</p>
+
+  <h2>2.2 Цена опциона: Блэк–Шоулз</h2>
+  <p>Формула Блэка–Шоулза отвечает на вопрос: сколько стоит опцион, если цена актива случайно блуждает с известной силой колебаний σ. Её не нужно выводить. Нужно понимать, что на входе и что она говорит.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · цена колла по Блэку–Шоулзу</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ C=S\,N(d_1)-K e^{-rT}N(d_2) \]</div>
+      <div class="fx-eq">\[ d_1=\frac{\ln(S/K)+(r+\sigma^2/2)\,T}{\sigma\sqrt{T}},\qquad d_2=d_1-\sigma\sqrt T \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(C\)</dt><dd>цена колла.</dd>
+        <dt>\(S\)</dt><dd>текущая цена актива (spot).</dd>
+        <dt>\(K\)</dt><dd>страйк.</dd>
+        <dt>\(T\)</dt><dd>время до экспирации <b>в годах</b>: 30 дней = 30/365 ≈ 0,0822.</dd>
+        <dt>\(\sigma\)</dt><dd>«сигма», волатильность: насколько сильно цена колеблется за год, в долях. 20% = 0,20.</dd>
+        <dt>\(r\)</dt><dd>безрисковая ставка. Для коротких опционов внутри дня её часто берут равной 0, ошибка мала.</dd>
+        <dt>\(\ln\)</dt><dd>натуральный логарифм. ln(S/K) ≈ «на сколько процентов S выше K»: ln(1,02) ≈ 0,0198 ≈ 2%.</dd>
+        <dt>\(e^{-rT}\)</dt><dd>дисконт: деньги в будущем стоят чуть меньше. При r = 0 он равен 1.</dd>
+        <dt>\(N(x)\)</dt><dd>доля колокола нормального распределения левее точки x. N(0) = 0,5; N(1) ≈ 0,84; N(−1) ≈ 0,16.</dd>
+        <dt>\(d_1, d_2\)</dt><dd>вспомогательные числа: «на сколько стандартных колебаний цена выше страйка». \(N(d_2)\) — это примерно вероятность, что колл закончит в деньгах.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>S = 100, K = 100, T = 30/365 = 0,0822, σ = 0,20, r = 0.</li>
+        <li>\(\sigma\sqrt T\) = 0,20 × √0,0822 = 0,20 × 0,2867 = 0,05734.</li>
+        <li>ln(100/100) = ln 1 = 0. \(\sigma^2/2\cdot T\) = 0,02 × 0,0822 = 0,001644.</li>
+        <li>\(d_1\) = (0 + 0,001644) / 0,05734 = 0,0287. \(d_2\) = 0,0287 − 0,0573 = −0,0287.</li>
+        <li>N(0,0287) = 0,5114; N(−0,0287) = 0,4886.</li>
+        <li>C = 100 × 0,5114 − 100 × 1 × 0,4886 = 51,14 − 48,86 = <b>2,29</b>.</li>
+      </ol>
+      <p class="pro">«Месячный ATM-колл при двадцати вол стоит около двух и трёх десятых, примерно 0,4 × σ√T × S».</p>
+    </div>
+  </div>
+
+  <div class="lab" id="w-opt">
+    <div class="lab-h"><b>Калькулятор опциона</b><span>Блэк–Шоулз, r = 0</span></div>
+    <div class="seg" role="group" aria-label="Тип опциона"><button data-t="c" aria-pressed="true">Колл</button><button data-t="p">Пут</button></div>
+    <div class="ctrl">
+      <label for="oS">Цена актива S <output id="oSo"></output><input type="range" id="oS" min="80" max="120" step="0.5" value="100"></label>
+      <label for="oK">Страйк K <output id="oKo"></output><input type="range" id="oK" min="80" max="120" step="1" value="100"></label>
+      <label for="oD">Дней до экспирации <output id="oDo"></output><input type="range" id="oD" min="1" max="120" step="1" value="30"></label>
+      <label for="oV">IV, % годовых <output id="oVo"></output><input type="range" id="oV" min="5" max="80" step="1" value="20"></label>
+    </div>
+    <div class="stats" id="oStats"></div>
+    <div class="plot" id="oPlot"></div>
+    <p class="hint">Пунктир — выплата на экспирации. Сплошная — цена опциона сегодня. Разница между ними и есть временная стоимость.</p>
+  </div>
+
+  <h2>2.3 Implied volatility</h2>
+  <p>В Блэка–Шоулза все входы известны, кроме σ: никто не знает будущую волатильность. Поэтому делают наоборот: берут рыночную цену опциона и подбирают σ, при которой формула даёт эту цену. Получившееся число — <b>implied volatility, IV</b> («подразумеваемая волатильность»). Это ожидание рынка, выраженное в цене.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · ожидаемое движение за день («правило 16»)</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{EM}_{1d}\approx S\cdot\frac{\text{IV}}{\sqrt{252}}\approx S\cdot\frac{\text{IV}}{16} \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>EM</dt><dd>expected move, ожидаемое движение за один день (примерно одно стандартное отклонение).</dd>
+        <dt>IV</dt><dd>годовая подразумеваемая волатильность в долях.</dd>
+        <dt>252</dt><dd>число торговых дней в году. √252 ≈ 15,87 ≈ 16.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>VIX = 16, то есть IV индекса S&amp;P 500 ≈ 16% = 0,16.</li>
+        <li>0,16 / 16 = 0,01 = 1% в день.</li>
+        <li>SPX = 5 800 → ожидаемое движение ≈ 58 пунктов. Примерно 2 дня из 3 диапазон закрытие-к-закрытию будет меньше этого.</li>
+      </ol>
+      <p class="pro">«VIX шестнадцать — рынок закладывает процент в день, около шестидесяти пунктов по эсу».</p>
+    </div>
+  </div>
+
+  <h2>2.4 Греки</h2>
+  <p>Греки — это чувствительности: на сколько изменится цена опциона, если изменить один вход, а остальные не трогать. Все числа ниже посчитаны для нашего примера S = 100, K = 100, 30 дней, IV 20%. Для ванны и чарма взят OTM-колл K = 105, потому что у ATM они почти ноль.</p>
+  <p class="muted">Значок φ(x) ниже — высота колокола нормального распределения в точке x: \(\varphi(x)=e^{-x^2/2}/\sqrt{2\pi}\). В нуле она 0,3989, дальше от нуля — меньше.</p>
+
+  <div class="fx">
+    <div class="fx-h">Дельта · как цена опциона следует за активом</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \Delta_{call}=N(d_1),\qquad \Delta_{put}=N(d_1)-1 \]</div>
+      <dl><dt>\(\Delta\)</dt><dd>на сколько изменится цена опциона, если актив вырастет на 1. От 0 до 1 у колла, от −1 до 0 у пута.</dd></dl>
+      <p class="t">Пример</p>
+      <ol><li>\(d_1\) = 0,0287 → N = 0,5114. Актив +1 → колл дорожает на ≈ 0,51.</li><li>Дилер, продавший 10 таких коллов (по 100 штук), имеет дельту −0,5114 × 100 × 10 = −511 акций. Чтобы быть нейтральным, он покупает 511 акций.</li></ol>
+      <p class="pro">«Колл полтиника дельты, хеджируем пятьсот акций на десять лотов».</p>
+    </div>
+  </div>
+  <div class="fx">
+    <div class="fx-h">Гамма · как быстро меняется дельта</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \Gamma=\frac{\varphi(d_1)}{S\,\sigma\sqrt T} \]</div>
+      <dl><dt>\(\Gamma\)</dt><dd>«гамма». На сколько изменится дельта, если актив сдвинется на 1. Одинакова у колла и пута с одним страйком.</dd></dl>
+      <p class="t">Пример по шагам</p>
+      <ol><li>φ(0,0287) = 0,3988.</li><li>Знаменатель: 100 × 0,05734 = 5,734.</li><li>Γ = 0,3988 / 5,734 = 0,0696. Актив +1 → дельта 0,511 → 0,581.</li><li>Гамма максимальна около страйка и растёт по мере приближения экспирации. У 0DTE-опционов у страйка она огромна.</li></ol>
+      <p class="pro">«Ближе к экспирации гамма у страйка взрывается, дилеры начинают дёргать хедж на каждом тике».</p>
+    </div>
+  </div>
+  <div class="fx">
+    <div class="fx-h">Вега и тета · волатильность и время</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \nu=S\,\varphi(d_1)\sqrt T,\qquad \Theta\approx-\frac{S\,\varphi(d_1)\,\sigma}{2\sqrt T}\ \ (r=0) \]</div>
+      <dl><dt>\(\nu\)</dt><dd>«вега»: на сколько подорожает опцион при росте IV на 1,00 (на 100 пунктов). Обычно делят на 100 и говорят «за 1 пункт вола».</dd><dt>\(\Theta\)</dt><dd>«тета»: на сколько опцион дешевеет за год, если ничего не происходит. Делят на 365 — получается за день.</dd></dl>
+      <p class="t">Пример по шагам</p>
+      <ol><li>Вега: 100 × 0,3988 × 0,2867 = 11,43 → за 1 пункт IV: 0,114. IV 20% → 21% даёт +0,11 к цене 2,29.</li><li>Тета: −100 × 0,3988 × 0,20 / (2 × 0,2867) = −13,91 в год → −13,91 / 365 = −0,038 в день.</li></ol>
+      <p class="pro">«Длинный колл платит четыре цента теты в день, вега одиннадцать центов на пункт вола».</p>
+    </div>
+  </div>
+  <div class="fx">
+    <div class="fx-h">Ванна и чарм · греки второго порядка для дилерских потоков</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{Vanna}=\frac{\partial\Delta}{\partial\sigma}=-\frac{\varphi(d_1)\,d_2}{\sigma},\qquad \text{Charm}=-\frac{\partial\Delta}{\partial T}=\frac{\varphi(d_1)\,d_2}{2T} \]</div>
+      <dl>
+        <dt>\(\partial\)</dt><dd>«частная производная»: изменение при сдвиге <i>одного</i> входа, остальные заморожены. Подробно — в главе 4.</dd>
+        <dt>Vanna</dt><dd>как меняется дельта, если меняется IV.</dd>
+        <dt>Charm</dt><dd>как меняется дельта сама по себе, просто потому что прошёл день (формула при r = 0, «в год»; делим на 365).</dd>
+      </dl>
+      <p class="t">Пример по шагам (колл K = 105, S = 100)</p>
+      <ol>
+        <li>\(d_1\) = (ln(100/105) + 0,001644) / 0,05734 = (−0,04879 + 0,00164) / 0,05734 = −0,822. \(d_2\) = −0,880.</li>
+        <li>φ(−0,822) = 0,2845. Дельта колла N(−0,822) = 0,205.</li>
+        <li>Vanna = −0,2845 × (−0,880) / 0,20 = 1,251 на 1,00 IV → <b>+0,0125 дельты на 1 пункт IV</b>. IV выросла с 20% до 21% → дельта 0,205 → 0,218.</li>
+        <li>Charm = 0,2845 × (−0,880) / (2 × 0,0822) = −1,522 в год → <b>−0,0042 в день</b>. Завтра при той же цене дельта будет 0,205 − 0,004 = 0,201: OTM-опцион «тает» к нулю.</li>
+      </ol>
+      <p class="pro">«Падение вола и распад времени выжимают дельту из OTM-путов — дилеры откупают хеджи, это ванна-чарм поддержка в неделю экспирации».</p>
+    </div>
+  </div>
+
+  <h2>2.5 Open interest против объёма</h2>
+  <ul>
+    <li><b>Объём</b> (volume) — сколько контрактов сменили владельца сегодня.</li>
+    <li><b>Open interest</b> (OI, открытый интерес) — сколько контрактов сейчас существует, то есть открыто и не закрыто. Клиринговая палата OCC публикует его <b>один раз в день</b>, утром, по итогам прошлого дня.</li>
+  </ul>
+  <div class="fx">
+    <div class="fx-h">Формула · изменение OI</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \Delta OI=\text{открыли}-\text{закрыли} \]</div>
+      <p class="t">Пример по шагам</p>
+      <ol><li>Вчера OI колла 5 900 был 12 000. Сегодня прошло 9 000 контрактов объёма.</li><li>Завтра OI = 15 500. ΔOI = +3 500: открыли на 3 500 больше, чем закрыли.</li><li>Остальные 5 500 объёма — закрытия, перепродажи и внутридневные сделки. Только по объёму это не различить.</li></ol>
+      <p class="pro">«Объём больше OI на страйке — похоже на открытие новых позиций, завтра проверим по OI».</p>
+    </div>
+  </div>
+  <div class="warn"><p><b>Важно для 0DTE.</b> Сегодняшние 0DTE-опционы открываются и закрываются внутри дня, в утренний OI они не попадают. Поэтому GEX, посчитанный только по OI, не видит большую часть внутридневной гаммы. Сервисы пытаются оценить её по объёму, и разные сервисы делают это по-разному.</p></div>
+
+  <h2>2.6 Sweeps, blocks и сторона сделки</h2>
+  <ul>
+    <li><b>Sweep</b> — заявка, которая одновременно «прочёсывает» несколько опционных бирж (в США их больше десятка), забирая всё по лучшим ценам. Признак спешки: покупатель готов переплатить, лишь бы взять объём сейчас.</li>
+    <li><b>Block</b> — одна крупная сделка, часто договорённая вне стакана и проведённая разом. Признак крупного участника, но не обязательно спешки.</li>
+    <li><b>Split</b> — крупная заявка, исполненная частями на одной бирже.</li>
+    <li><b>Сторона:</b> сделка по аску или выше середины — скорее покупка; по биду — скорее продажа. Как в ленте фьючерса.</li>
+  </ul>
+  <div class="fx">
+    <div class="fx-h">Формула · премия сделки</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{Премия}=P_{opt}\times 100\times n \]</div>
+      <dl><dt>\(P_{opt}\)</dt><dd>цена опциона.</dd><dt>100</dt><dd>множитель контракта.</dd><dt>\(n\)</dt><dd>число контрактов.</dd></dl>
+      <p class="t">Пример</p>
+      <ol><li>Sweep: 2 000 коллов QQQ по 3,50 по аску.</li><li>3,50 × 100 × 2 000 = $700 000 премии.</li></ol>
+      <p class="pro">«Бычий свип на семьсот тысяч премии в недельные коллы, по аску».</p>
+    </div>
+  </div>
+  <div class="warn"><p><b>Почему «необычный опционный поток» обманывает.</b> Ты видишь одну ногу сделки. Покупка коллов может быть хеджем короткой позиции, частью спреда, закрытием старой продажи или ставкой на волатильность в паре с фьючерсом. Отдельный принт — подсказка, а не сигнал. Полезнее суммарный поток по многим сделкам и то, как он меняет позицию дилеров.</p></div>
+
+  <h2>2.7 Дилерское хеджирование</h2>
+  <p>Маркет-мейкер (дилер) продаёт и покупает опционы, чтобы зарабатывать на спреде, а не на направлении. Поэтому он <b>хеджирует дельту</b>: держит в базовом активе (фьючерсе или акциях) противоположную позицию.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · размер хеджа и его изменение</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ H=-\Delta\cdot 100\cdot n,\qquad dH=-\Gamma\cdot dS\cdot 100\cdot n \]</div>
+      <dl>
+        <dt>\(H\)</dt><dd>хедж: сколько единиц актива держит дилер (минус — шорт).</dd>
+        <dt>\(n\)</dt><dd>число контрактов в позиции дилера: плюс — купил опционы, минус — продал.</dd>
+        <dt>\(dS\)</dt><dd>сдвиг цены актива.</dd>
+        <dt>\(dH\)</dt><dd>сколько ему придётся докупить (+) или продать (−).</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Дилер <b>продал</b> 1 000 ATM-коллов: n = −1 000. Γ = 0,0696.</li>
+        <li>Актив вырос на 1: dS = +1.</li>
+        <li>dH = −0,0696 × 1 × 100 × (−1 000) = +6 960. Дилер должен <b>купить</b> 6 960 акций — в растущий рынок.</li>
+        <li>Если бы дилер опционы <b>купил</b> (n = +1 000), dH = −6 960: он продаёт в рост.</li>
+      </ol>
+      <p class="pro">«Дилеры в короткой гамме гонятся за ценой, в длинной — гасят движение».</p>
+    </div>
+  </div>
+  <div class="lab" id="w-hedge">
+    <div class="lab-h"><b>Хедж дилера при движении цены</b><span>интерактив</span></div>
+    <div class="seg" role="group" aria-label="Позиция дилера"><button data-g="long" aria-pressed="true">Дилер купил опционы (длинная гамма)</button><button data-g="short">Дилер продал опционы (короткая гамма)</button></div>
+    <div class="ctrl"><label for="hS">Сдвиг цены актива <output id="hSo"></output><input type="range" id="hS" min="-3" max="3" step="0.25" value="1"></label></div>
+    <div class="stats" id="hStats"></div>
+    <p class="hint" id="hNote"></p>
+  </div>
+  <div class="key"><p>Длинная гамма у дилеров = они <b>продают рост и покупают падение</b> → движения гасятся, рынок «пилит». Короткая гамма = они <b>покупают рост и продают падение</b> → движения разгоняются. GEX — это попытка посчитать, какой из двух режимов сейчас и насколько он силён.</p></div>
+</section>
+
+<!-- ============ 3 GEX ============ -->
+<section class="ch" id="gex" data-title="GEX">
+  <p class="eyebrow">Глава 3</p>
+  <h1>GEX: гамма-экспозиция</h1>
+  <p class="lead">GEX (gamma exposure) — оценка того, сколько долларов базового актива дилерам придётся купить или продать, если рынок сдвинется на 1%.</p>
+
+  <h2>3.1 Формула по одному страйку</h2>
+  <div class="fx">
+    <div class="fx-h">Формула · GEX страйка</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{GEX}_K=\pm\,\Gamma_K\cdot OI_K\cdot 100\cdot S^2\cdot 0{,}01 \]</div>
+      <p class="t">Что значат буквы</p>
+      <dl>
+        <dt>\(\pm\)</dt><dd>знак: плюс для коллов, минус для путов. Это <b>предположение</b> о позиции дилеров, разбор ниже.</dd>
+        <dt>\(\Gamma_K\)</dt><dd>гамма одного опциона со страйком K.</dd>
+        <dt>\(OI_K\)</dt><dd>открытый интерес на этом страйке.</dd>
+        <dt>100</dt><dd>множитель контракта.</dd>
+        <dt>\(S^2\cdot 0{,}01\)</dt><dd>перевод в доллары на 1% движения. Γ × 100 даёт изменение дельты в штуках на 1 пункт. Умножаем на 0,01·S — получаем штуки на 1% движения. Умножаем ещё на S — доллары.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>SPX = 5 000, ATM-опцион на 30 дней при IV 15%: Γ ≈ 0,00185. OI = 10 000 коллов.</li>
+        <li>0,00185 × 10 000 = 18,5.</li>
+        <li>18,5 × 100 = 1 850 — на столько единиц индекса меняется дельта всех этих опционов при сдвиге на 1 пункт.</li>
+        <li>S² = 25 000 000. 1 850 × 25 000 000 = 46 250 000 000.</li>
+        <li>× 0,01 = <b>$462,5 млн</b> на 1% движения. Если SPX вырастет на 1% (50 пунктов), дилерам надо продать около $460 млн, чтобы остаться нейтральными.</li>
+      </ol>
+      <p class="pro">«На пятитысячном страйке почти полмиллиарда гаммы на процент».</p>
+    </div>
+  </div>
+
+  <h2>3.2 Главное допущение</h2>
+  <p>Публичные данные не говорят, кто купил опцион, а кто продал. Классический GEX предполагает:</p>
+  <ul>
+    <li>клиенты (фонды) <b>продают коллы</b> против своих акций (covered calls) → дилеры <b>купили коллы</b> → длинная гамма → знак <span class="buy">+</span>;</li>
+    <li>клиенты <b>покупают путы</b> для страховки → дилеры <b>продали путы</b> → короткая гамма → знак <span class="sell">−</span>.</li>
+  </ul>
+  <div class="warn"><p>Допущение ломается, когда розница массово покупает коллы (2020–2021, мемные акции): тогда дилеры коротки и коллы, и знак у коллов должен быть минус. Платные сервисы пытаются определять сторону по каждой сделке (по аску или по биду), но и это оценка. Поэтому <b>GEX у разных сервисов разный</b>, и ни один не видит реальных книг дилеров.</p></div>
+
+  <h2>3.3 Профиль, gamma flip и стены</h2>
+  <div class="fx">
+    <div class="fx-h">Формула · суммарный GEX и gamma flip</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \text{GEX}(S)=\sum_{K}\text{GEX}_K(S),\qquad \text{flip}:\ \text{GEX}(S^{*})=0 \]</div>
+      <dl>
+        <dt>GEX(S)</dt><dd>сумма по всем страйкам, если бы цена была S. Гамма каждого опциона зависит от S, поэтому её пересчитывают для каждой гипотетической цены.</dd>
+        <dt>\(S^{*}\)</dt><dd>цена, где сумма переходит через ноль — <b>gamma flip</b> (zero gamma).</dd>
+      </dl>
+      <p class="t">Как считать по шагам</p>
+      <ol>
+        <li>Берём сетку гипотетических цен: 5 600, 5 610, …, 6 000.</li>
+        <li>Для каждой цены заново считаем гамму всех опционов по Блэку–Шоулзу и суммируем GEX по страйкам.</li>
+        <li>Находим две соседние цены, где сумма меняет знак, например −0,4 млрд при 5 720 и +0,2 млрд при 5 730.</li>
+        <li>Интерполируем: 5 720 + 10 × 0,4 / (0,4 + 0,2) ≈ 5 726,7. Это flip.</li>
+      </ol>
+      <p class="pro">«Флип около 5 725, мы выше — рынок в длинной гамме, шорт-вол стратегии чувствуют себя спокойно».</p>
+    </div>
+  </div>
+  <ul>
+    <li><b>Call wall</b> — страйк с наибольшим положительным GEX коллов. Над рынком это «потолок»: при подходе дилеры продают всё сильнее.</li>
+    <li><b>Put wall</b> — страйк с наибольшим по модулю отрицательным GEX путов. Часто действует как «пол», особенно когда до него доходят и путы начинают закрывать.</li>
+    <li><b>Absolute gamma strike</b> — страйк с наибольшей суммарной гаммой. Цена тяготеет к нему у экспирации («пиннинг»).</li>
+  </ul>
+
+  <div class="lab" id="w-gex">
+    <div class="lab-h"><b>GEX учебной цепочки</b><span>числа выдуманы, похожи на SPX</span></div>
+    <div class="seg" role="group" aria-label="Метрика"><button data-m="gex" aria-pressed="true">GEX, $ на 1%</button><button data-m="vanna">Поток от ванны</button><button data-m="charm">Поток от чарма</button></div>
+    <div class="ctrl">
+      <label for="gS">Цена SPX сейчас <output id="gSo"></output><input type="range" id="gS" min="5600" max="6000" step="5" value="5800"></label>
+      <label for="gD">Дней до экспирации <output id="gDo"></output><input type="range" id="gD" min="1" max="30" step="1" value="7"></label>
+    </div>
+    <div class="stats" id="gStats"></div>
+    <div class="plot" id="gBar"></div>
+    <div class="plot" id="gCurve"></div>
+    <p class="hint" id="gNote">Верхний график — вклад каждого страйка. Нижний — суммарный GEX, если бы цена была на оси X. Точка пересечения нуля — gamma flip.</p>
+  </div>
+
+  <h2>3.4 Режимы гаммы</h2>
+  <div class="tbl"><table>
+    <tr><th></th><th>Положительная гамма (цена выше flip)</th><th>Отрицательная гамма (цена ниже flip)</th></tr>
+    <tr><td>Дилеры</td><td>продают рост, покупают падение</td><td>продают падение, покупают рост</td></tr>
+    <tr><td>Волатильность</td><td>реализованная ниже, VIX обычно падает</td><td>реализованная выше, VIX растёт</td></tr>
+    <tr><td>Внутри дня</td><td>диапазон, возвраты к VWAP и POC, ложные пробои</td><td>трендовые дни, пробои продолжаются, широкие свечи</td></tr>
+    <tr><td>Что работает</td><td>отбой от краёв диапазона, фейд экстремумов, цель — середина</td><td>пробой с ретестом, торговля по тренду, цели дальше</td></tr>
+    <tr><td>Опасность</td><td>«ловить ножи» при смене режима</td><td>стопы шире; входы против тренда дорогие</td></tr>
+  </table></div>
+  <div class="key"><p><b>Как пользоваться.</b> Режим — это фон, а не сигнал. Он отвечает на вопрос «чего ждать от пробоя уровня: продолжения или возврата?». Решение о входе всё равно принимается по ордер флоу у уровня.</p></div>
+
+  <h2>3.5 Vanna и charm exposure</h2>
+  <p>Даже если цена стоит, дельты опционов меняются из-за IV (ванна) и времени (чарм). Дилеры перехеджируются, и это создаёт поток без всякой новости.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · поток хеджа от ванны и чарма</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ F_{vanna}=s_K\cdot\text{Vanna}_K\cdot OI_K\cdot 100\cdot S\cdot 0{,}01 \]</div>
+      <div class="fx-eq">\[ F_{charm}=-\,s_K\cdot\text{Charm}^{day}_K\cdot OI_K\cdot 100\cdot S \]</div>
+      <dl>
+        <dt>\(s_K\)</dt><dd>знак позиции дилера: +1 для коллов, −1 для путов (то же допущение).</dd>
+        <dt>\(F_{vanna}\)</dt><dd>сколько долларов дилеры купят (+) или продадут (−), если IV <b>упадёт</b> на 1 пункт.</dd>
+        <dt>\(F_{charm}\)</dt><dd>сколько долларов они купят или продадут за один прошедший день при той же цене.</dd>
+      </dl>
+      <p class="t">Пример по шагам (OTM-путы)</p>
+      <ol>
+        <li>Дилеры коротки 20 000 путов со страйком 5 600, SPX = 5 800. У такого пута ванна отрицательная, например −0,004 на 1 пункт IV (в формуле выше уже учтено «на пункт»).</li>
+        <li>IV падает на 1 пункт → дельта пута −0,15 становится, скажем, −0,146: пут «уходит из денег».</li>
+        <li>Короткий пут у дилера имел дельту +0,15 × 100 × 20 000 = +300 000 единиц, против неё дилер держал шорт фьючерсов. Дельта уменьшилась → шорт хеджа лишний → дилер <b>откупает</b>.</li>
+        <li>Считаем по формуле. Ванна уже взята «на 1 пункт IV», поэтому множитель 0,01 уже внутри числа −0,004: \(F_{vanna}\) = (−1) × (−0,004) × 20 000 × 100 × 5 800 = +46 400 000 ≈ <b>+$46 млн покупок</b>. Знак плюс — покупка.</li>
+      </ol>
+      <p class="pro">«После CPI вол сдулся, ванна заставила дилеров откупать хеджи — отсюда ралли без новостей».</p>
+    </div>
+  </div>
+  <ul>
+    <li><b>Ванна-ралли:</b> после важного события (FOMC, CPI) IV падает → дилеры откупают шорт-хеджи по путам → покупки во фьючерсах.</li>
+    <li><b>Чарм в неделю экспирации:</b> OTM-путы тают каждый день → тот же эффект, плавный подъём к OPEX (третья пятница месяца).</li>
+    <li><b>После OPEX</b> часть гаммы и ванны исчезает вместе с опционами, рынок становится «свободнее», иногда это окно для крупных движений.</li>
+  </ul>
+
+  <h2>3.6 Перенос уровней на ES и NQ</h2>
+  <p>GEX считают по опционам на индексы и ETF: SPX и SPY для S&amp;P 500, QQQ и NDX для Nasdaq-100. Торгуешь ты фьючерсы, поэтому уровни надо пересчитать.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · перевод уровня</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ L_{ES}=L_{SPX}+(ES-SPX),\qquad L_{NQ}=L_{QQQ}\cdot\frac{NQ}{QQQ} \]</div>
+      <dl>
+        <dt>\(L\)</dt><dd>уровень (страйк, flip, стена).</dd>
+        <dt>ES − SPX</dt><dd>базис: насколько фьючерс сейчас дороже индекса (из-за ставки и дивидендов). Меняется изо дня в день.</dd>
+        <dt>NQ / QQQ</dt><dd>коэффициент: QQQ — это ETF, его цена примерно в 40 раз меньше индекса. Берём текущее соотношение.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>ES = 5 840, SPX = 5 812 → базис 28. Call wall SPX 5 900 → на ES это 5 928.</li>
+        <li>NQ = 20 600, QQQ = 502 → коэффициент 41,04. Put wall QQQ 490 → на NQ это 490 × 41,04 ≈ 20 108.</li>
+        <li>Пересчитывай утром перед открытием: и базис, и коэффициент дрейфуют.</li>
+      </ol>
+      <p class="pro">«Колл-волл по SPX 5 900, с базисом это 5 928 по эсу».</p>
+    </div>
+  </div>
+  <div class="warn"><p><b>Nasdaq сложнее.</b> Опционный рынок на SPX/SPY гораздо глубже, чем на NDX/QQQ, и гамма S&amp;P сильнее влияет на весь рынок. Уровни QQQ для NQ работают слабее. Многие трейдеры NQ смотрят и на гамма-режим SPX как на общий фон.</p></div>
+</section>
+
+<!-- ============ 4 SURFACES ============ -->
+<section class="ch" id="surfaces" data-title="3D-поверхности">
+  <p class="eyebrow">Глава 4</p>
+  <h1>Трёхмерные поверхности</h1>
+  <p class="lead">Цена опциона, его IV и гамма зависят сразу от двух вещей: от цены (или страйка) и от времени. Функция двух переменных — это поверхность. Научимся её читать.</p>
+
+  <h2>4.1 Математика поверхности за пять минут</h2>
+  <p>Обычный график: одна ось X, одна ось Y, линия \(y=f(x)\). Поверхность: две оси на «полу» (x и y) и высота \(z=f(x,y)\). Каждая точка пола получает свою высоту — как рельеф местности на карте.</p>
+  <ul>
+    <li><b>Срез</b>: зафиксируй одну ось — получишь обычную кривую. Срез поверхности IV при одной экспирации даёт «улыбку»; срез при одном страйке даёт term structure.</li>
+    <li><b>Линии уровня</b>: точки одинаковой высоты, как изолинии на туристической карте.</li>
+    <li><b>Наклон по одной оси</b> — частная производная. Крутизна склона, если идти строго вдоль X.</li>
+    <li><b>Кривизна</b> — вторая производная. Насколько склон «выгнут»: чаша или купол.</li>
+  </ul>
+  <div class="fx">
+    <div class="fx-h">Формула · наклон и кривизна по числам</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \frac{\partial f}{\partial x}\approx\frac{f(x+h,y)-f(x-h,y)}{2h},\qquad \frac{\partial^2 f}{\partial x^2}\approx\frac{f(x+h,y)-2f(x,y)+f(x-h,y)}{h^2} \]</div>
+      <dl>
+        <dt>\(\partial f/\partial x\)</dt><dd>«дэ эф по дэ икс»: наклон поверхности вдоль оси x при замороженном y.</dd>
+        <dt>\(h\)</dt><dd>маленький шаг, на который сдвигаем x в обе стороны.</dd>
+        <dt>\(\partial^2 f/\partial x^2\)</dt><dd>вторая производная: как быстро меняется сам наклон.</dd>
+      </dl>
+      <p class="t">Пример по шагам: дельта и гамма как наклон и кривизна</p>
+      <ol>
+        <li>Поверхность — цена колла C(S, T) с K = 100, IV 20%. Замораживаем T = 30 дней, берём h = 1.</li>
+        <li>C(99) = 1,8106, C(100) = 2,2872, C(101) = 2,8331.</li>
+        <li>Наклон: (2,8331 − 1,8106) / 2 = 0,511. Это <b>дельта</b> — совпадает с N(d₁) = 0,5114.</li>
+        <li>Кривизна: (2,8331 − 2 × 2,2872 + 1,8106) / 1² = 0,0693. Это <b>гамма</b> — совпадает с 0,0696.</li>
+        <li>Наклон вдоль оси времени — <b>тета</b>. Всё, что называют греками, — это наклоны и кривизны одной поверхности цены.</li>
+      </ol>
+      <p class="pro">«Гамма — это выпуклость цены опциона по споту».</p>
+    </div>
+  </div>
+  <div class="lab" id="w-px3d">
+    <div class="lab-h"><b>Поверхность опциона: цена × время</b><span>крути пальцем</span></div>
+    <div class="seg" role="group" aria-label="Что по высоте"><button data-z="price" aria-pressed="true">Цена колла</button><button data-z="delta">Дельта</button><button data-z="gamma">Гамма</button></div>
+    <div class="plot3d" id="px3d"></div>
+    <p class="hint">Ось «Цена» — S от 80 до 120, страйк 100. Ось «Дней» — сколько осталось до экспирации. Обрати внимание: у гаммы к экспирации вырастает острый пик над страйком.</p>
+  </div>
+
+  <h2>4.2 Поверхность implied volatility</h2>
+  <p>Если бы Блэк–Шоулз был идеален, IV у всех опционов одного актива была бы одинаковой. На деле она зависит от страйка и от срока. Поверхность IV: по полу — страйк (в долях от текущей цены) и дни до экспирации, по высоте — IV.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · координаты поверхности</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ \sigma=\sigma(k,T),\qquad k=\ln\frac{K}{F} \]</div>
+      <dl>
+        <dt>\(\sigma(k,T)\)</dt><dd>IV как функция двух переменных.</dd>
+        <dt>\(k\)</dt><dd>log-moneyness, «удалённость страйка» в процентах: k = −0,05 — страйк на ~5% ниже рынка.</dd>
+        <dt>\(F\)</dt><dd>форвардная цена (для коротких сроков почти равна текущей цене или цене фьючерса).</dd>
+      </dl>
+      <p class="t">Пример</p>
+      <ol><li>F = 5 800, страйк 5 510. 5 510 / 5 800 = 0,95, ln 0,95 = −0,051.</li><li>Значит, пут 5 510 — примерно «пятипроцентный OTM».</li></ol>
+      <p class="pro">«Смотрим IV по пятипроцентным путам на месячной экспирации».</p>
+    </div>
+  </div>
+  <div class="lab" id="w-iv3d">
+    <div class="lab-h"><b>Поверхность IV индекса</b><span>учебная модель</span></div>
+    <div class="seg" role="group" aria-label="Режим рынка"><button data-r="calm" aria-pressed="true">Спокойный рынок</button><button data-r="stress">Стресс</button></div>
+    <div class="plot3d" id="iv3d"></div>
+    <div class="plot" id="ivSlices"></div>
+    <p class="hint">Внизу два среза той же поверхности: улыбка (skew) на 30 дней и term structure ATM.</p>
+  </div>
+
+  <h3>Skew</h3>
+  <p>У индексов IV путов ниже рынка выше, чем у коллов выше рынка. Причина — постоянный спрос на страховку от падения. Это и есть skew, «перекос».</p>
+  <div class="fx">
+    <div class="fx-h">Формула · risk reversal 25Δ</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ RR_{25}=\text{IV}_{25\Delta\,call}-\text{IV}_{25\Delta\,put} \]</div>
+      <dl><dt>25Δ</dt><dd>опцион с дельтой 0,25 по модулю — стандартная точка «умеренно OTM».</dd><dt>\(RR_{25}\)</dt><dd>risk reversal: разница IV колла и пута. У индексов почти всегда отрицательна.</dd></dl>
+      <p class="t">Пример</p>
+      <ol><li>IV 25Δ-колла = 12%, 25Δ-пута = 18%.</li><li>RR = 12 − 18 = −6 пунктов. Если завтра станет −8, спрос на защиту растёт: рынок нервничает, даже если цена стоит.</li></ol>
+      <p class="pro">«Скью круче на два пункта — за путы платят больше, хеджи покупают».</p>
+    </div>
+  </div>
+  <h3>Term structure</h3>
+  <p>IV одного и того же ATM-страйка на разных сроках. В спокойное время длинные сроки дороже коротких (<b>контанго</b>, кривая растёт). В панике короткие резко дорожают и становятся выше длинных (<b>бэквордация</b>, кривая инвертирована). Инверсия — один из лучших признаков, что рынок в отрицательной гамме и стрессе. Самый доступный индикатор — соотношение VIX9D/VIX или VIX/VIX3M: если больше 1, структура перевёрнута.</p>
+  <div class="fx">
+    <div class="fx-h">Формула · total variance и проверка на здравый смысл</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ w(k,T)=\sigma^2(k,T)\cdot T,\qquad w(k,T_2)\ \ge\ w(k,T_1)\ \ \text{при}\ T_2\ge T_1 \]</div>
+      <dl><dt>\(w\)</dt><dd>«полная дисперсия»: сколько неопределённости накопится до экспирации.</dd></dl>
+      <p class="t">Пример</p>
+      <ol><li>30 дней: IV 25%, T = 0,0822 → w = 0,0625 × 0,0822 = 0,00514.</li><li>60 дней: IV 20%, T = 0,1644 → w = 0,04 × 0,1644 = 0,00658.</li><li>0,00658 ≥ 0,00514 — нормально, даже при инвертированной IV. Если бы было наоборот, существовал бы арбитраж (календарный спред бесплатно).</li></ol>
+      <p class="pro">«Кривая инвертирована по волу, но по полной дисперсии календарного арбитража нет».</p>
+    </div>
+  </div>
+
+  <h2>4.3 Поверхность GEX: цена × время</h2>
+  <p>Возьмём учебную цепочку из главы 3 и посчитаем суммарный GEX для каждой гипотетической цены и для каждого «сколько дней осталось». Получится рельеф, на котором видно, как к экспирации гамма собирается в острые гребни у крупных страйков.</p>
+  <div class="lab" id="w-gex3d">
+    <div class="lab-h"><b>Поверхность GEX</b><span>крути пальцем</span></div>
+    <div class="plot3d" id="gex3d"></div>
+    <p class="hint">Ось «SPX» — гипотетическая цена. Ось «Дней» — сколько осталось до экспирации. Высота — суммарный GEX, млрд $ на 1%. Синяя впадина ниже нуля — зона отрицательной гаммы, граница с жёлтым — линия gamma flip.</p>
+  </div>
+  <ul>
+    <li><b>Далеко до экспирации</b> поверхность гладкая: гамма размазана по многим страйкам, уровни мягкие.</li>
+    <li><b>В день экспирации</b> возникают острые пики у страйков с большим OI. Цена между ними «прилипает» (пиннинг) в положительной зоне и резко ускоряется в отрицательной.</li>
+    <li><b>Линия flip</b> на полу сдвигается со временем. Уровень, посчитанный утром, к вечеру может переместиться — особенно в 0DTE-дни.</li>
+  </ul>
+</section>
+
+<!-- ============ 5 PLAYBOOK ============ -->
+<section class="ch" id="playbook" data-title="Как торговать">
+  <p class="eyebrow">Глава 5</p>
+  <h1>Как торговать: от карты к сделке</h1>
+  <p class="lead">GEX и профиль объёма говорят, <b>где</b> ждать. Ордер флоу говорит, <b>когда</b> входить. Риск-менеджмент говорит, <b>сколько</b>.</p>
+
+  <h2>5.1 Подготовка до открытия (15 минут)</h2>
+  <ol>
+    <li><b>Календарь новостей.</b> CPI, FOMC, NFP — за 2 минуты до и 5 минут после стакан пустеет, ордер флоу бесполезен. Не торгуй эти минуты.</li>
+    <li><b>Режим гаммы.</b> Цена SPX выше или ниже flip? Насколько далеко? Перевёрнута ли term structure (VIX/VIX3M &gt; 1)?</li>
+    <li><b>Уровни GEX</b> в ценах фьючерса: call wall, put wall, flip, крупные страйки.</li>
+    <li><b>Уровни аукциона:</b> вчерашние POC, VAH, VAL; максимум и минимум ночной сессии; VWAP.</li>
+    <li><b>План:</b> «если откроемся внутри value area в положительной гамме — торгую отбои от краёв; если ниже VAL и ниже flip — торгую только шорты по тренду».</li>
+  </ol>
+
+  <h2>5.2 Четыре сетапа</h2>
+  <div class="setup">
+    <h3>A. Абсорбция на уровне</h3>
+    <dl>
+      <dt>Режим</dt><dd>лучше всего в положительной гамме.</dd>
+      <dt>Где</dt><dd>put wall, VAL, вчерашний минимум (для лонга; для шорта — зеркально).</dd>
+      <dt>Триггер</dt><dd>у уровня агрессивные продажи: большой объём по биду, дельта бара сильно минус, а цена не делает новый минимум больше 2–3 тиков. Затем первый бар с положительной дельтой закрывается выше уровня.</dd>
+      <dt>Вход</dt><dd>лимиткой на ретесте уровня или рыночной по закрытию бара-подтверждения.</dd>
+      <dt>Стоп</dt><dd>за экстремум абсорбции + 2–4 тика. Если там опять продают и цена идёт ниже — абсорбция сломана.</dd>
+      <dt>Цель</dt><dd>VWAP или POC; вторая часть — противоположный край value area.</dd>
+    </dl>
+  </div>
+  <div class="setup">
+    <h3>B. Провалившийся пробой</h3>
+    <dl>
+      <dt>Режим</dt><dd>положительная гамма, день внутри диапазона.</dd>
+      <dt>Где</dt><dd>пробой VAH/VAL, ночного экстремума или call wall.</dd>
+      <dt>Триггер</dt><dd>пробой на сильной агрессии (стек имбалансов, всплеск дельты), но через 1–3 бара цена возвращается под уровень, а CVD разворачивается. Пробившие в ловушке.</dd>
+      <dt>Вход</dt><dd>на возврате под уровень или на первом ретесте снизу.</dd>
+      <dt>Стоп</dt><dd>за экстремум пробоя.</dd>
+      <dt>Цель</dt><dd>POC, затем противоположный край value area.</dd>
+    </dl>
+  </div>
+  <div class="setup">
+    <h3>C. Инициативный пробой</h3>
+    <dl>
+      <dt>Режим</dt><dd>отрицательная гамма, цена ниже flip или только что его пересекла.</dd>
+      <dt>Где</dt><dd>выход из value area, пробой put wall вниз, пробой flip.</dd>
+      <dt>Триггер</dt><dd>стек из 3+ имбалансов в сторону пробоя, CVD подтверждает новым экстремумом, два бара закрываются за уровнем (цена «принята»).</dd>
+      <dt>Вход</dt><dd>на ретесте пробитого уровня, если на ретесте нет абсорбции против тебя.</dd>
+      <dt>Стоп</dt><dd>за стек имбалансов или за ретест.</dd>
+      <dt>Цель</dt><dd>следующий крупный страйк GEX или LVN профиля; в отрицательной гамме цели держат дальше и тянут стоп.</dd>
+    </dl>
+  </div>
+  <div class="setup">
+    <h3>D. Дивергенция у стены</h3>
+    <dl>
+      <dt>Режим</dt><dd>положительная гамма.</dd>
+      <dt>Где</dt><dd>call wall сверху (шорт) или put wall снизу (лонг).</dd>
+      <dt>Триггер</dt><dd>цена делает новый экстремум у стены, CVD — нет; у экстремума видно истощение (объём по аску 0–3 на крайних ценах).</dd>
+      <dt>Вход</dt><dd>после закрытия бара с дельтой в сторону разворота.</dd>
+      <dt>Стоп</dt><dd>за экстремум + запас 3–6 тиков: стены «протыкают».</dd>
+      <dt>Цель</dt><dd>VWAP, затем POC.</dd>
+    </dl>
+  </div>
+  <div class="warn"><p><b>Когда не входить.</b> Цена посередине между уровнями. Нет триггера. Новость через 5 минут. Ты уже потерял дневной лимит или две сделки подряд по эмоциям. Сделок «на всякий случай» в этой системе нет.</p></div>
+
+  <h2>5.3 Размер позиции и ожидание</h2>
+  <div class="fx">
+    <div class="fx-h">Формула · сколько контрактов брать</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ n=\left\lfloor\frac{R_{\$}}{\text{стоп}_{тиков}\cdot \text{стоимость тика}}\right\rfloor \]</div>
+      <dl>
+        <dt>\(n\)</dt><dd>число контрактов.</dd>
+        <dt>\(R_{\$}\)</dt><dd>сколько долларов готов потерять в сделке. На счёте 50K обычно 0,25–0,5% = $125–250.</dd>
+        <dt>⌊ ⌋</dt><dd>«пол»: округлить вниз до целого. Вверх нельзя — превысишь риск.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>Риск $250. Стоп за абсорбцию — 10 пунктов NQ = 40 тиков.</li>
+        <li>MNQ: 40 × $0,50 = $20 на контракт. 250 / 20 = 12,5 → <b>12 MNQ</b>.</li>
+        <li>NQ: 40 × $5 = $200. 250 / 200 = 1,25 → 1 NQ (фактический риск $200).</li>
+        <li>Сверь с правилами своего проп-счёта: дневной лимит убытка и максимальную просадку. Риск на сделку должен укладываться в дневной лимит хотя бы 4–5 раз.</li>
+      </ol>
+      <p class="pro">«Режу размер под стоп, а не стоп под размер».</p>
+    </div>
+  </div>
+  <div class="fx">
+    <div class="fx-h">Формула · математическое ожидание сетапа</div>
+    <div class="fx-b">
+      <div class="fx-eq">\[ E=p\cdot W-(1-p)\cdot L \]</div>
+      <dl>
+        <dt>\(E\)</dt><dd>средний результат одной сделки, в R (R — один риск, например $250).</dd>
+        <dt>\(p\)</dt><dd>доля прибыльных сделок (winrate).</dd>
+        <dt>\(W, L\)</dt><dd>средняя прибыль и средний убыток в R.</dd>
+      </dl>
+      <p class="t">Пример по шагам</p>
+      <ol>
+        <li>По журналу: 100 сделок сетапа A, 45 прибыльных, средняя прибыль 2R, средний убыток 1R.</li>
+        <li>E = 0,45 × 2 − 0,55 × 1 = 0,90 − 0,55 = +0,35R.</li>
+        <li>При R = $250 это ≈ $87 на сделку в среднем. Комиссии вычти отдельно.</li>
+        <li>Пока сделок меньше ~100, оценка p очень шумная: при 20 сделках настоящий winrate 45% легко покажется 30% или 60%.</li>
+      </ol>
+      <p class="pro">«Сетап в плюсе на ноль тридцать пять R на выборке в сто сделок, держу».</p>
+    </div>
+  </div>
+
+  <h2>5.4 Разбор одной сделки</h2>
+  <ol>
+    <li><b>Утро.</b> SPX 5 812 при flip 5 760 — положительная гамма. VIX 15, кривая в контанго. Put wall SPX 5 750, на ES с базисом 28 это 5 778. Вчерашний VAL ES = 5 781. Два уровня рядом — сильная зона 5 778–5 781.</li>
+    <li><b>План.</b> Положительная гамма → ждём возвратов. Интересен лонг от зоны 5 778–5 781 по сетапу A.</li>
+    <li><b>10:40 NY.</b> ES падает к 5 781. На футпринте: на 5 780,75 по биду 1 450 контрактов, дельта бара −1 100, но минимум 5 780,50 — ниже не идут. Стакан на биде показывает 40–60, исполнено намного больше — похоже на айсберг.</li>
+    <li><b>Триггер.</b> Следующий 1-минутный бар: дельта +380, закрытие 5 782,25.</li>
+    <li><b>Вход</b> 5 782,25. <b>Стоп</b> 5 779,50 (за экстремум 5 780,50 + 4 тика) = 2,75 пункта = 11 тиков. Риск $250 → MES: 11 × $1,25 = $13,75 → 18 MES.</li>
+    <li><b>Цели.</b> VWAP 5 795 (+12,75 пункта ≈ 4,6R) — половина; остаток на POC 5 803 со стопом в безубыток.</li>
+    <li><b>Журнал.</b> Записываем режим, уровень, триггер, скриншот футпринта, результат в R. Без журнала через месяц ты не узнаешь, работает ли сетап.</li>
+  </ol>
+  <p class="muted">Это иллюстрация логики, а не результат. Цифры придуманы.</p>
+</section>
+
+<!-- ============ 6 TRAINER ============ -->
+<section class="ch" id="trainer" data-title="Тренажёр">
+  <p class="eyebrow">Глава 6</p>
+  <h1>Тренажёр</h1>
+  <p class="lead">Задачи по всем главам. Числовой ответ вводи с точкой или запятой. После ответа откроется разбор по шагам.</p>
+  <div class="score" id="tScore"></div>
+  <div class="seg" role="group" aria-label="Фильтр"><button data-f="all" aria-pressed="true">Все</button><button data-f="of">Ордер флоу</button><button data-f="op">Опционы</button><button data-f="gx">GEX</button><button data-f="3d">3D</button><button data-f="tr">Торговля</button></div>
+  <div id="tList"></div>
+  <p><button class="btn" id="tReset" type="button">Сбросить ответы</button></p>
+</section>
+
+<!-- ============ 7 LIMITS ============ -->
+<section class="ch" id="limits" data-title="Ограничения">
+  <p class="eyebrow">Глава 7</p>
+  <h1>Ограничения, данные и цены</h1>
+  <p class="lead">Что нужно, чтобы всё это использовать на деле, сколько это стоит и где метод перестаёт работать.</p>
+
+  <h2>7.1 Какие данные нужны</h2>
+  <div class="tbl"><table>
+    <tr><th>Задача</th><th>Данные</th><th>Где брать</th><th>Ориентир цены</th></tr>
+    <tr><td>Футпринт, дельта, CVD по NQ/ES</td><td>Тики CME с флагом агрессора</td><td>Rithmic, CQG, Tradovate, Denali (Sierra Chart) через платформу</td><td>Биржевые сборы CME для непрофессионала: единицы–десятки $ в месяц</td></tr>
+    <tr><td>Стакан (DOM)</td><td>Глубина рынка (Level 2, MBP или MBO)</td><td>Тот же поток данных</td><td>Часто входит в пакет CME, иногда отдельно</td></tr>
+    <tr><td>Платформа для ордер флоу</td><td>—</td><td>Sierra Chart, ATAS, Bookmap, NinjaTrader (Order Flow+), Quantower, MotiveWave</td><td>Примерно $25–100 в месяц; у части есть бессрочные лицензии и бесплатные урезанные версии</td></tr>
+    <tr><td>GEX-уровни готовые</td><td>Расчёт по опционам SPX, SPY, QQQ</td><td>SpotGamma, MenthorQ, Unusual Whales, Barchart и другие</td><td>Примерно $30–300 в месяц</td></tr>
+    <tr><td>GEX своими руками</td><td>Цепочка опционов: страйки, OI, IV</td><td>Задержанные котировки CBOE (бесплатно, с задержкой), платные API опционных данных (OPRA)</td><td>Бесплатно с задержкой; real-time OPRA — от ~$80 в месяц и выше</td></tr>
+    <tr><td>Бэктест ордер флоу</td><td>Исторические тики или MBO</td><td>Databento, платные архивы платформ</td><td>От десятков до сотен $ за набор, гигабайты данных</td></tr>
+  </table></div>
+  <p class="muted">Цены — ориентиры по памяти, они меняются. Проверь на сайте сервиса перед оплатой. Отдельно уточни, какие платформы и какой поток данных даёт твой проп: от этого зависит, будет ли у тебя полноценный футпринт.</p>
+
+  <h2>7.2 Где ордер флоу не работает</h2>
+  <ul>
+    <li><b>CFD и форекс у брокера.</b> У NAS100 на MT5 нет биржи, «объём» там — число тиков котировки брокера. Футпринт и дельта по нему ничего не значат. Решение: читать поток по NQ на CME и переносить уровни с поправкой на разницу цен.</li>
+    <li><b>Новости.</b> На CPI, FOMC, NFP ликвидность снимают, цена прыгает через уровни, стопы исполняются с большим проскальзыванием.</li>
+    <li><b>Тонкие часы.</b> Азиатская сессия и праздники: мало объёма, единичные сделки выглядят как «сигналы».</li>
+    <li><b>Алгоритмы, которые прячутся.</b> Крупные участники режут заявки на мелкие куски и торгуют лимитками. Агрессия в ленте — только часть картины.</li>
+    <li><b>Скриншотная ловушка.</b> На истории каждый разворот «объясняется» абсорбцией. В реальном времени ты не знаешь, какая абсорбция выдержит. Отсюда правило: только сетапы с заранее заданным триггером и стопом.</li>
+  </ul>
+
+  <h2>7.3 Где GEX не работает</h2>
+  <ul>
+    <li><b>Допущение о дилерах неверно</b>, когда клиенты массово покупают коллы или продают путы. Знак GEX может быть перевёрнут.</li>
+    <li><b>OI обновляется раз в день</b>, а 0DTE торгуются внутри дня. Утренний профиль к обеду может устареть.</li>
+    <li><b>Макро сильнее гаммы.</b> Неожиданная ставка ФРС, геополитика, ликвидации — гамма-уровни пробиваются, как бумага.</li>
+    <li><b>Гамма — не единственный хеджер.</b> Есть CTA, фонды риск-паритета, обратные выкупы, ребалансировки. Их потоки могут перекрыть дилерский.</li>
+    <li><b>Отдельные акции и крипта.</b> Опционный рынок там меньше или устроен иначе; выводы для SPX переносятся плохо.</li>
+    <li><b>Разные сервисы — разные уровни.</b> Если flip у двух сервисов отличается на 40 пунктов, это не точный уровень, а зона.</li>
+  </ul>
+
+  <h2>7.4 Как проверить, что это работает у тебя</h2>
+  <ol>
+    <li>Выбери один сетап из главы 5 и запиши его правила так, чтобы их мог выполнить другой человек.</li>
+    <li>Отработай его в режиме replay (повтор истории есть в Sierra Chart, ATAS, NinjaTrader) на 50–100 случаях.</li>
+    <li>Затем 50–100 сделок на демо или микроконтрактах с журналом: режим, уровень, триггер, R.</li>
+    <li>Посчитай E по формуле из 5.3. Если E ≤ 0 после комиссий — меняй правила или бросай сетап. Если E &gt; 0 — только тогда на проп.</li>
+  </ol>
+  <div class="key"><p><b>Итог.</b> Ордер флоу и GEX помогают не входить в плохих местах и держать сделки в хороших. Они не заменяют дисциплину, журнал и статистику. Начни с бесплатного: задержанные данные CBOE для своего GEX и replay на демо-данных платформы.</p></div>
+</section>
+
+<nav class="pager" id="pager" aria-label="Соседние главы"></nav>
+</main>
+
+<script>
+window.MathJax={tex:{inlineMath:[["\\(","\\)"]],displayMath:[["\\[","\\]"]]},svg:{fontCache:"global"},options:{enableMenu:false}};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" async></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  var HAS_PLOTLY = typeof window.Plotly !== "undefined";
+
+  /* ---------- number formatting ---------- */
+  function fmt(x, d) {
+    if (d === undefined) d = 2;
+    if (!isFinite(x)) return "—";
+    return x.toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function money(x, d) { return (x < 0 ? "−$" : "$") + fmt(Math.abs(x), d === undefined ? 0 : d); }
+  function sgn(x, d) { return (x > 0 ? "+" : x < 0 ? "−" : "") + fmt(Math.abs(x), d); }
+
+  /* ---------- math ---------- */
+  function erf(x) {
+    var t = 1 / (1 + 0.3275911 * Math.abs(x));
+    var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return x >= 0 ? y : -y;
+  }
+  function N(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
+  function phi(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
+  // Black-Scholes, r = 0. T in years, s = vol as decimal.
+  function bs(S, K, T, s, type) {
+    T = Math.max(T, 1e-6);
+    var sq = s * Math.sqrt(T);
+    var d1 = (Math.log(S / K) + 0.5 * s * s * T) / sq, d2 = d1 - sq;
+    var c = S * N(d1) - K * N(d2);
+    var isC = type !== "p";
+    var price = isC ? c : c - S + K;
+    var pd = phi(d1);
+    return {
+      d1: d1, d2: d2, price: price,
+      delta: isC ? N(d1) : N(d1) - 1,
+      gamma: pd / (S * sq),
+      vega: S * pd * Math.sqrt(T) / 100,             // per 1 vol point
+      theta: -S * pd * s / (2 * Math.sqrt(T)) / 365, // per day
+      vanna: -pd * d2 / s / 100,                    // delta change per +1 vol point
+      charm: pd * d2 / (2 * T) / 365                 // delta change per one day passing
+    };
+  }
+
+  /* ---------- theme for charts ---------- */
+  function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function th() {
+    return { ink: tok("--ink"), muted: tok("--muted"), line: tok("--line"), accent: tok("--accent"),
+      buy: tok("--buy"), sell: tok("--sell"), gamma: tok("--gamma"), surface: tok("--surface"), sunk: tok("--sunk") };
+  }
+  function base(extra) {
+    var t = th();
+    var l = {
+      paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: "Golos Text, system-ui, sans-serif", color: t.ink, size: 12 },
+      margin: { l: 52, r: 12, t: 10, b: 40 }, dragmode: false, showlegend: true,
+      legend: { orientation: "h", x: 0, y: -0.18, font: { size: 11, color: t.muted } },
+      hoverlabel: { bgcolor: t.surface, bordercolor: t.line, font: { color: t.ink } }
+    };
+    for (var k in extra) l[k] = extra[k];
+    return l;
+  }
+  function ax(title, extra) {
+    var t = th();
+    var a = { title: { text: title, font: { size: 11, color: t.muted } }, gridcolor: t.line, zerolinecolor: t.muted,
+      linecolor: t.line, tickfont: { color: t.muted, size: 10 }, fixedrange: true, automargin: true };
+    for (var k in extra) a[k] = extra[k];
+    return a;
+  }
+  var CFG = { displayModeBar: false, responsive: true };
+  var CFG3 = { displayModeBar: false, responsive: true, scrollZoom: false };
+  function plot(id, data, layout, cfg) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!HAS_PLOTLY) { el.innerHTML = '<p class="hint">График не загрузился: проверь интернет и обнови страницу.</p>'; el.style.height = "auto"; return; }
+    Plotly.react(el, data, layout, cfg || CFG);
+  }
+  function scene3(xt, yt, zt) {
+    var t = th();
+    function a(title) {
+      return { title: { text: title, font: { size: 11, color: t.muted } }, gridcolor: t.line, zerolinecolor: t.muted,
+        tickfont: { size: 9, color: t.muted }, backgroundcolor: "rgba(0,0,0,0)", showbackground: false };
+    }
+    return { xaxis: a(xt), yaxis: a(yt), zaxis: a(zt), camera: { eye: { x: 1.55, y: -1.55, z: 0.9 } }, aspectmode: "manual", aspectratio: { x: 1.1, y: 1.1, z: 0.7 } };
+  }
+  function seg(groupSel, attr, onPick) {
+    var btns = $$(groupSel + " button[data-" + attr + "]");
+    btns.forEach(function (b) {
+      b.addEventListener("click", function () {
+        btns.forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+        onPick(b.getAttribute("data-" + attr));
+      });
+    });
+  }
+
+  /* ======================= 1. ORDER FLOW ======================= */
+  // Book
+  var ASKS = [[20000.00, 8], [20000.25, 12], [20000.50, 15], [20000.75, 9], [20001.00, 22], [20001.25, 18], [20001.50, 30]];
+  var BIDS = [[19999.75, 10], [19999.50, 14], [19999.25, 11], [19999.00, 20], [19998.75, 16]];
+  function renderBook() {
+    var q = +$("#bookQ").value; $("#bookQo").textContent = q;
+    var left = q, cost = 0, fills = [];
+    ASKS.forEach(function (a) { var take = Math.min(left, a[1]); fills.push(take); left -= take; cost += take * a[0]; });
+    var got = q - left, avg = got ? cost / got : NaN, slip = (avg - ASKS[0][0]) / 0.25;
+    var h = '<tr><th class="n">Покупатели (bid)</th><th class="n" style="text-align:center">Цена</th><th class="n">Продавцы (ask)</th></tr>';
+    for (var i = ASKS.length - 1; i >= 0; i--) {
+      var cls = fills[i] === ASKS[i][1] ? "eaten" : fills[i] > 0 ? "part" : "";
+      var label = fills[i] > 0 && fills[i] < ASKS[i][1] ? ASKS[i][1] + " → " + (ASKS[i][1] - fills[i]) : ASKS[i][1];
+      h += '<tr class="' + cls + '"><td></td><td class="px">' + fmt(ASKS[i][0]) + '</td><td class="a">' + label + "</td></tr>";
+    }
+    BIDS.forEach(function (b) { h += '<tr><td class="b">' + b[1] + '</td><td class="px">' + fmt(b[0]) + "</td><td></td></tr>"; });
+    $("#bookT").innerHTML = h;
+    var st = '<div class="stat"><small>Средняя цена</small><b>' + fmt(avg) + "</b></div>" +
+      '<div class="stat"><small>Проскальзывание</small><b>' + fmt(slip, 2) + " тика</b></div>" +
+      '<div class="stat"><small>Цена слипа на NQ</small><b>' + money(slip * 5 * got) + "</b></div>" +
+      '<div class="stat"><small>Новый лучший аск</small><b>' + newAsk(fills) + "</b></div>";
+    if (left > 0) st += '<div class="stat"><small>Не хватило ликвидности</small><b>' + left + " шт.</b></div>";
+    $("#bookS").innerHTML = st;
+  }
+  function newAsk(fills) {
+    for (var i = 0; i < ASKS.length; i++) if (fills[i] < ASKS[i][1]) return fmt(ASKS[i][0]);
+    return "стакан пуст";
+  }
+
+  // CVD
+  var cvdScenario = "confirm";
+  var CVD_NOTES = {
+    confirm: "Цена и CVD растут вместе: рост делают агрессивные покупки. Тренд здоровый, против него не встают.",
+    div: "Цена обновила максимум справа, а CVD — нет. Новый максимум сделан на меньшей агрессии покупателей. Это предупреждение, а не сигнал: нужен триггер у уровня.",
+    abs: "CVD растёт весь отрезок, а цена стоит на месте. Кто-то крупный продаёт лимитками в каждую покупку. Если покупатели устанут — цена пойдёт вниз."
+  };
+  function cvdData(s) {
+    var px = [], cv = [], x = [];
+    for (var i = 0; i < 48; i++) {
+      x.push(i);
+      var n1 = Math.sin(i * 1.7) * 3 + Math.sin(i * 0.53) * 4;
+      if (s === "confirm") { px.push(20000 + i * 1.6 + n1); cv.push(i * 95 + Math.sin(i * 1.1) * 140); }
+      else if (s === "div") {
+        var p = i < 24 ? 20000 + i * 2.2 : 20052 - (i - 24) * 1.8 + Math.max(0, i - 36) * 4.6;
+        px.push(p + n1 * 0.6);
+        var c = i < 24 ? i * 120 : 2880 - (i - 24) * 140 + Math.max(0, i - 36) * 120;
+        cv.push(c + Math.sin(i * 1.3) * 120);
+      } else { px.push(20020 + n1 * 0.9); cv.push(i * 110 + Math.sin(i * 0.9) * 150); }
+    }
+    return { x: x, px: px, cv: cv };
+  }
+  function renderCvd() {
+    var t = th(), d = cvdData(cvdScenario);
+    plot("cvdPlot", [
+      { x: d.x, y: d.px, type: "scatter", mode: "lines", name: "Цена NQ", line: { color: t.ink, width: 2 }, hovertemplate: "%{y:.2f}<extra></extra>" },
+      { x: d.x, y: d.cv, type: "scatter", mode: "lines", name: "CVD", xaxis: "x", yaxis: "y2", line: { color: t.accent, width: 2 }, fill: "tozeroy", fillcolor: "rgba(127,140,200,0.12)", hovertemplate: "%{y:.0f}<extra></extra>" }
+    ], base({
+      xaxis: ax("Бар (1 минута)"), yaxis: ax("Цена", { domain: [0.48, 1] }), yaxis2: ax("CVD", { domain: [0, 0.4] }),
+      margin: { l: 58, r: 10, t: 8, b: 40 }, showlegend: false
+    }));
+    $("#cvdNote").textContent = CVD_NOTES[cvdScenario];
+  }
+
+  // Footprint
+  var FP = [
+    [20012.00, 2, 3], [20011.75, 14, 22], [20011.50, 35, 61], [20011.25, 48, 170], [20011.00, 52, 210],
+    [20010.75, 60, 245], [20010.50, 75, 420], [20010.25, 140, 180], [20010.00, 260, 230], [20009.75, 310, 95],
+    [20009.50, 280, 60], [20009.25, 120, 15], [20009.00, 25, 0]
+  ];
+  function renderFp() {
+    var R = +$("#fpR").value; $("#fpRo").textContent = fmt(R, 1);
+    var poc = 0, best = -1, sumA = 0, sumB = 0, nb = 0, ns = 0;
+    FP.forEach(function (r, i) { var v = r[1] + r[2]; sumB += r[1]; sumA += r[2]; if (v > best) { best = v; poc = i; } });
+    var h = '<tr><td class="p">Цена</td><td style="text-align:right;color:var(--muted)">Bid</td><td style="color:var(--muted);text-align:left">Ask</td></tr>';
+    FP.forEach(function (r, i) {
+      var below = FP[i + 1], above = FP[i - 1];
+      var buyImb = below && r[2] > 0 && r[2] / Math.max(below[1], 1) >= R && r[2] >= 20;
+      var sellImb = above && r[1] > 0 && r[1] / Math.max(above[2], 1) >= R && r[1] >= 20;
+      if (buyImb) nb++; if (sellImb) ns++;
+      h += '<tr class="' + (i === poc ? "poc" : "") + '"><td class="p">' + fmt(r[0]) + '</td><td class="bid ' + (sellImb ? "hi-s" : "") + '">' + r[1] +
+        '</td><td class="ask ' + (buyImb ? "hi-b" : "") + '">' + r[2] + "</td></tr>";
+    });
+    $("#fpT").innerHTML = h;
+    $("#fpS").innerHTML =
+      '<div class="stat"><small>Объём свечи</small><b>' + fmt(sumA + sumB, 0) + "</b></div>" +
+      '<div class="stat"><small>Дельта свечи</small><b>' + sgn(sumA - sumB, 0) + "</b></div>" +
+      '<div class="stat"><small>POC свечи</small><b>' + fmt(FP[poc][0]) + "</b></div>" +
+      '<div class="stat"><small>Имбалансы buy / sell</small><b>' + nb + " / " + ns + "</b></div>";
+  }
+
+  // Volume profile
+  var vpShape = "d";
+  function vpData(s) {
+    var out = [];
+    for (var i = 0; i < 28; i++) {
+      var g = function (c, w, a) { return a * Math.exp(-Math.pow((i - c) / w, 2)); };
+      var v;
+      if (s === "d") v = g(13, 5.5, 1000) + 40;
+      else if (s === "p") v = g(19, 3.8, 1100) + g(8, 6, 160) + 30;
+      else v = g(7, 2.8, 820) + g(20, 3.2, 950) + g(13.5, 2, 90) + 30;
+      v *= 1 + 0.12 * Math.sin(i * 2.3);
+      out.push({ p: 5780 + i, v: Math.round(v) });
+    }
+    return out;
+  }
+  function valueArea(rows) {
+    var tot = rows.reduce(function (a, r) { return a + r.v; }, 0), poc = 0;
+    rows.forEach(function (r, i) { if (r.v > rows[poc].v) poc = i; });
+    var lo = poc, hi = poc, acc = rows[poc].v, target = 0.7 * tot;
+    while (acc < target && (lo > 0 || hi < rows.length - 1)) {
+      var up = (hi + 1 < rows.length ? rows[hi + 1].v : 0) + (hi + 2 < rows.length ? rows[hi + 2].v : 0);
+      var dn = (lo - 1 >= 0 ? rows[lo - 1].v : 0) + (lo - 2 >= 0 ? rows[lo - 2].v : 0);
+      if (up >= dn && hi < rows.length - 1) { var n = Math.min(2, rows.length - 1 - hi); for (var k = 0; k < n; k++) { hi++; acc += rows[hi].v; } }
+      else { var m = Math.min(2, lo); for (var j = 0; j < m; j++) { lo--; acc += rows[lo].v; } }
+    }
+    return { tot: tot, poc: poc, lo: lo, hi: hi, acc: acc };
+  }
+  function renderVp() {
+    var rows = vpData(vpShape), va = valueArea(rows), mx = rows[va.poc].v, h = "";
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var cls = i === va.poc ? "poc" : i >= va.lo && i <= va.hi ? "va" : "";
+      h += "<span>" + fmt(rows[i].p, 2) + '</span><div><div class="bar ' + cls + '" style="width:' + (rows[i].v / mx * 100).toFixed(1) + '%"></div></div><span>' + rows[i].v + "</span>";
+    }
+    $("#vpBox").innerHTML = h;
+    $("#vpS").innerHTML =
+      '<div class="stat"><small>POC</small><b>' + fmt(rows[va.poc].p) + "</b></div>" +
+      '<div class="stat"><small>VAH</small><b>' + fmt(rows[va.hi].p) + "</b></div>" +
+      '<div class="stat"><small>VAL</small><b>' + fmt(rows[va.lo].p) + "</b></div>" +
+      '<div class="stat"><small>В value area</small><b>' + fmt(va.acc, 0) + " из " + fmt(va.tot, 0) + " (" + fmt(va.acc / va.tot * 100, 1) + "%)</b></div>";
+  }
+
+  /* ======================= 2. OPTIONS ======================= */
+  var optType = "c";
+  function renderOpt() {
+    var S = +$("#oS").value, K = +$("#oK").value, D = +$("#oD").value, V = +$("#oV").value / 100;
+    $("#oSo").textContent = fmt(S, 1); $("#oKo").textContent = K; $("#oDo").textContent = D; $("#oVo").textContent = (V * 100).toFixed(0) + "%";
+    var T = D / 365, g = bs(S, K, T, V, optType);
+    var intr = optType === "c" ? Math.max(S - K, 0) : Math.max(K - S, 0);
+    var cells = [["Цена опциона", fmt(g.price, 3)], ["Внутренняя", fmt(intr, 2)], ["Временная", fmt(g.price - intr, 3)],
+      ["Дельта", fmt(g.delta, 3)], ["Гамма", fmt(g.gamma, 4)], ["Вега, на 1 п. IV", fmt(g.vega, 3)],
+      ["Тета, в день", fmt(g.theta, 3)], ["Ванна, на 1 п. IV", fmt(g.vanna, 4)], ["Чарм, в день", fmt(g.charm, 4)]];
+    $("#oStats").innerHTML = cells.map(function (c) { return '<div class="stat"><small>' + c[0] + "</small><b>" + c[1] + "</b></div>"; }).join("");
+    var xs = [], now = [], pay = [];
+    for (var s = 70; s <= 130; s += 0.5) {
+      xs.push(s); now.push(bs(s, K, T, V, optType).price);
+      pay.push(optType === "c" ? Math.max(s - K, 0) : Math.max(K - s, 0));
+    }
+    var t = th();
+    plot("oPlot", [
+      { x: xs, y: pay, name: "Выплата на экспирации", mode: "lines", line: { color: t.muted, dash: "dash", width: 1.5 }, hovertemplate: "%{y:.2f}<extra></extra>" },
+      { x: xs, y: now, name: "Цена сегодня", mode: "lines", line: { color: t.accent, width: 2.5 }, hovertemplate: "%{y:.2f}<extra></extra>" },
+      { x: [S], y: [g.price], name: "Текущая точка", mode: "markers", marker: { color: t.gamma, size: 10 }, hoverinfo: "skip" }
+    ], base({ xaxis: ax("Цена актива S"), yaxis: ax("Цена опциона") }));
+  }
+
+  var hedgeMode = "long";
+  function renderHedge() {
+    var dS = +$("#hS").value; $("#hSo").textContent = sgn(dS, 2);
+    var n = hedgeMode === "long" ? 1000 : -1000;
+    var a = bs(100, 100, 30 / 365, 0.2, "c"), b = bs(100 + dS, 100, 30 / 365, 0.2, "c");
+    var dDelta = b.delta - a.delta;
+    var dealerDeltaChange = n * 100 * dDelta;
+    var trade = -dealerDeltaChange;
+    var act = Math.abs(trade) < 0.5 ? "ничего не делать" : (trade > 0 ? "купить " : "продать ") + fmt(Math.abs(trade), 0) + " акций";
+    var withMove = dS === 0 ? "—" : (trade > 0) === (dS > 0) ? "по движению: разгоняет" : "против движения: гасит";
+    $("#hStats").innerHTML =
+      '<div class="stat"><small>Дельта колла</small><b>' + fmt(a.delta, 3) + " → " + fmt(b.delta, 3) + "</b></div>" +
+      '<div class="stat"><small>Дельта книги дилера</small><b>' + sgn(dealerDeltaChange, 0) + "</b></div>" +
+      '<div class="stat"><small>Дилеру нужно</small><b>' + act + "</b></div>" +
+      '<div class="stat"><small>Эффект на рынок</small><b>' + withMove + "</b></div>";
+    $("#hNote").textContent = "Позиция дилера: " + (n > 0 ? "куплено" : "продано") + " 1 000 ATM-коллов (S = 100, K = 100, 30 дней, IV 20%). Каждый контракт — 100 акций. Хедж пересчитан точно, а не по одной гамме, поэтому при больших сдвигах числа чуть отличаются от формулы Γ·dS.";
+  }
+
+  /* ======================= 3. GEX ======================= */
+  var STRIKES = [];
+  for (var k = 5500; k <= 6100; k += 25) STRIKES.push(k);
+  var SPIKE_C = { 5800: 3000, 5850: 4000, 5900: 7000, 5950: 3000, 6000: 12000 };
+  var SPIKE_P = { 5500: 5000, 5600: 8000, 5650: 3000, 5700: 9000, 5750: 5000, 5800: 3000 };
+  var CHAIN = STRIKES.map(function (K) {
+    return {
+      K: K,
+      cOI: Math.round(1200 + 7000 * Math.exp(-Math.pow((K - 5950) / 90, 2)) + (SPIKE_C[K] || 0)),
+      pOI: Math.round(1500 + 9000 * Math.exp(-Math.pow((K - 5660) / 110, 2)) + (SPIKE_P[K] || 0)),
+      iv: Math.max(0.08, 0.14 - 0.9 * Math.log(K / 5800))
+    };
+  });
+  function gexAt(S, T) {
+    var rows = CHAIN.map(function (c) {
+      var g = bs(S, c.K, T, c.iv, "c");
+      var mult = 100 * S * S * 0.01 / 1e9; // $bn per 1%
+      return {
+        K: c.K,
+        call: g.gamma * c.cOI * mult,
+        put: -g.gamma * c.pOI * mult,
+        vanna: (g.vanna * c.cOI - g.vanna * c.pOI) * 100 * S / 1e6,          // $M bought when IV falls 1pt
+        charm: -(g.charm * c.cOI - g.charm * c.pOI) * 100 * S / 1e6          // $M bought per day passing
+      };
+    });
+    return rows;
+  }
+  function totalGex(S, T) { return gexAt(S, T).reduce(function (a, r) { return a + r.call + r.put; }, 0); }
+  function findFlip(T, spot) {
+    var xs = [], ys = [], flips = [];
+    for (var S = 5550; S <= 6050; S += 5) { xs.push(S); ys.push(totalGex(S, T)); }
+    for (var i = 1; i < xs.length; i++) {
+      if ((ys[i - 1] < 0) !== (ys[i] < 0)) flips.push(xs[i - 1] + 5 * Math.abs(ys[i - 1]) / (Math.abs(ys[i - 1]) + Math.abs(ys[i])));
+    }
+    var best = null;
+    flips.forEach(function (f) { if (best === null || Math.abs(f - spot) < Math.abs(best - spot)) best = f; });
+    return { xs: xs, ys: ys, flip: best };
+  }
+  var gexMetric = "gex";
+  function renderGex() {
+    var S = +$("#gS").value, D = +$("#gD").value, T = D / 365;
+    $("#gSo").textContent = fmt(S, 0); $("#gDo").textContent = D;
+    var rows = gexAt(S, T), t = th(), curve = findFlip(T, S);
+    var tot = rows.reduce(function (a, r) { return a + r.call + r.put; }, 0);
+    var cw = rows.reduce(function (a, r) { return r.call > a.call ? r : a; });
+    var pw = rows.reduce(function (a, r) { return r.put < a.put ? r : a; });
+    var vTot = rows.reduce(function (a, r) { return a + r.vanna; }, 0);
+    var cTot = rows.reduce(function (a, r) { return a + r.charm; }, 0);
+    var Ks = rows.map(function (r) { return r.K; });
+    var shapes = [{ type: "line", x0: S, x1: S, yref: "paper", y0: 0, y1: 1, line: { color: t.accent, width: 2 } }];
+    if (curve.flip) shapes.push({ type: "line", x0: curve.flip, x1: curve.flip, yref: "paper", y0: 0, y1: 1, line: { color: t.gamma, width: 2, dash: "dot" } });
+    var data, ytitle;
+    if (gexMetric === "gex") {
+      ytitle = "GEX, млрд $ на 1%";
+      data = [
+        { x: Ks, y: rows.map(function (r) { return r.call; }), type: "bar", name: "Коллы (+)", marker: { color: t.buy }, hovertemplate: "%{x}: %{y:.2f}<extra></extra>" },
+        { x: Ks, y: rows.map(function (r) { return r.put; }), type: "bar", name: "Путы (−)", marker: { color: t.sell }, hovertemplate: "%{x}: %{y:.2f}<extra></extra>" }
+      ];
+    } else {
+      var key = gexMetric;
+      ytitle = key === "vanna" ? "Поток при IV −1 п., млн $" : "Поток за 1 день, млн $";
+      var ys = rows.map(function (r) { return r[key]; });
+      data = [{ x: Ks, y: ys, type: "bar", name: "+ покупка / − продажа", marker: { color: ys.map(function (v) { return v >= 0 ? t.buy : t.sell; }) }, hovertemplate: "%{x}: %{y:.1f}<extra></extra>" }];
+    }
+    plot("gBar", data, base({ barmode: "relative", bargap: 0.15, xaxis: ax("Страйк"), yaxis: ax(ytitle), shapes: shapes }));
+    var pos = curve.ys.map(function (v) { return Math.max(v, 0); }), neg = curve.ys.map(function (v) { return Math.min(v, 0); });
+    plot("gCurve", [
+      { x: curve.xs, y: pos, name: "Положительная гамма", mode: "lines", line: { color: t.buy, width: 1.5 }, fill: "tozeroy", hovertemplate: "%{x}: %{y:.2f}<extra></extra>" },
+      { x: curve.xs, y: neg, name: "Отрицательная гамма", mode: "lines", line: { color: t.sell, width: 1.5 }, fill: "tozeroy", hovertemplate: "%{x}: %{y:.2f}<extra></extra>" },
+      { x: [S], y: [tot], name: "Мы сейчас", mode: "markers", marker: { color: t.accent, size: 11 }, hoverinfo: "skip" }
+    ], base({ xaxis: ax("Гипотетическая цена SPX"), yaxis: ax("Суммарный GEX, млрд $"), shapes: shapes.slice(1) }));
+    var regime = tot >= 0 ? '<span class="buy">положительная</span>' : '<span class="sell">отрицательная</span>';
+    var st = '<div class="stat"><small>Суммарный GEX</small><b>' + sgn(tot, 2) + " млрд $</b></div>" +
+      '<div class="stat"><small>Режим</small><b>' + regime + "</b></div>" +
+      '<div class="stat"><small>Gamma flip</small><b>' + (curve.flip ? fmt(curve.flip, 0) : "нет") + "</b></div>" +
+      '<div class="stat"><small>Call wall</small><b>' + cw.K + "</b></div>" +
+      '<div class="stat"><small>Put wall</small><b>' + pw.K + "</b></div>";
+    if (gexMetric === "vanna") st += '<div class="stat"><small>Поток при IV −1 п.</small><b>' + sgn(vTot, 0) + " млн $</b></div>";
+    if (gexMetric === "charm") st += '<div class="stat"><small>Поток за день</small><b>' + sgn(cTot, 0) + " млн $</b></div>";
+    $("#gStats").innerHTML = st;
+  }
+
+  /* ======================= 4. SURFACES ======================= */
+  var pxZ = "price";
+  function renderPx3d() {
+    var Ss = [], Ds = [], Z = [];
+    for (var s = 80; s <= 120; s += 1) Ss.push(s);
+    for (var d = 1; d <= 60; d += 2) Ds.push(d);
+    Ds.forEach(function (d) {
+      Z.push(Ss.map(function (s) { var g = bs(s, 100, d / 365, 0.2, "c"); return pxZ === "price" ? g.price : pxZ === "delta" ? g.delta : g.gamma; }));
+    });
+    var t = th();
+    var zt = pxZ === "price" ? "Цена" : pxZ === "delta" ? "Дельта" : "Гамма";
+    plot("px3d", [{ type: "surface", x: Ss, y: Ds, z: Z, colorscale: [[0, t.accent], [0.5, t.buy], [1, t.gamma]], showscale: false,
+      contours: { z: { show: true, usecolormap: true, project: { z: true }, width: 1 } },
+      hovertemplate: "S %{x}<br>дней %{y}<br>" + zt + " %{z:.3f}<extra></extra>" }],
+      base({ margin: { l: 0, r: 0, t: 0, b: 0 }, showlegend: false, dragmode: "turntable", scene: scene3("Цена S", "Дней", zt) }), CFG3);
+  }
+
+  var ivRegime = "calm";
+  var IV_DAYS = [7, 14, 21, 30, 45, 60, 90, 120, 180, 270, 365];
+  function ivModel(m, days, reg) {
+    var T = days / 365, k = Math.log(m);
+    var atm = reg === "calm" ? 0.12 + 0.06 * (1 - Math.exp(-T / 0.4)) : 0.20 + 0.18 * Math.exp(-T / 0.15);
+    var b0 = reg === "calm" ? 0.75 : 1.05;
+    var b = b0 * Math.pow(0.0822 / T, 0.35), c = 0.8 * Math.pow(0.0822 / T, 0.3);
+    return Math.max(0.05, atm - b * k + c * k * k);
+  }
+  function renderIv() {
+    var Ms = [];
+    for (var m = 0.80; m <= 1.2001; m += 0.01) Ms.push(+m.toFixed(2));
+    var Z = IV_DAYS.map(function (d) { return Ms.map(function (m) { return ivModel(m, d, ivRegime) * 100; }); });
+    var t = th();
+    plot("iv3d", [{ type: "surface", x: Ms, y: IV_DAYS, z: Z, colorscale: [[0, t.accent], [0.5, t.buy], [1, t.gamma]], showscale: false,
+      hovertemplate: "K/F %{x}<br>дней %{y}<br>IV %{z:.1f}%<extra></extra>" }],
+      base({ margin: { l: 0, r: 0, t: 0, b: 0 }, showlegend: false, dragmode: "turntable", scene: scene3("Страйк / цена", "Дней", "IV, %") }), CFG3);
+    var smile = Ms.map(function (m) { return ivModel(m, 30, ivRegime) * 100; });
+    var term = IV_DAYS.map(function (d) { return ivModel(1, d, ivRegime) * 100; });
+    plot("ivSlices", [
+      { x: Ms, y: smile, mode: "lines", name: "Улыбка, 30 дней", line: { color: t.accent, width: 2.5 }, hovertemplate: "%{x}: %{y:.1f}%<extra></extra>" },
+      { x: IV_DAYS, y: term, mode: "lines+markers", name: "Term structure ATM", xaxis: "x2", yaxis: "y2", line: { color: t.gamma, width: 2.5 }, hovertemplate: "%{x} дн.: %{y:.1f}%<extra></extra>" }
+    ], base({
+      grid: { rows: 2, columns: 1, pattern: "independent" },
+      xaxis: ax("Страйк / цена (K/F)"), yaxis: ax("IV, %"), xaxis2: ax("Дней до экспирации"), yaxis2: ax("IV, %"),
+      margin: { l: 52, r: 12, t: 10, b: 40 }, legend: { orientation: "h", x: 0, y: 1.12, font: { size: 11, color: t.muted } }
+    }));
+  }
+
+  var gex3dDone = null;
+  function renderGex3d() {
+    var Ss = [], Ds = [0.15, 0.3, 0.5, 1, 1.5, 2, 3, 4, 5, 7, 10, 14, 21, 30];
+    for (var s = 5600; s <= 6000; s += 10) Ss.push(s);
+    if (!gex3dDone) gex3dDone = Ds.map(function (d) { return Ss.map(function (s) { return totalGex(s, d / 365); }); });
+    var Z = gex3dDone, t = th();
+    var mx = 0; Z.forEach(function (r) { r.forEach(function (v) { mx = Math.max(mx, Math.abs(v)); }); });
+    plot("gex3d", [{ type: "surface", x: Ss, y: Ds, z: Z, cmin: -mx, cmax: mx, colorscale: [[0, t.accent], [0.5, t.sunk], [1, t.gamma]], showscale: false,
+      contours: { z: { show: true, start: 0, end: 0, size: 1, color: t.ink, width: 3, project: { z: true } } },
+      hovertemplate: "SPX %{x}<br>дней %{y}<br>GEX %{z:.2f} млрд<extra></extra>" }],
+      base({ margin: { l: 0, r: 0, t: 0, b: 0 }, showlegend: false, dragmode: "turntable", scene: scene3("SPX", "Дней", "GEX, млрд $") }), CFG3);
+  }
+
+  /* ======================= 6. TRAINER ======================= */
+  var TASKS = [
+    { c: "of", q: "Аск: 20 000,00 — 6 контрактов, 20 000,25 — 5, 20 000,50 — 10. Покупаешь рыночной 15 NQ. Какое проскальзывание в тиках относительно 20 000,00?", t: "num", a: 0.87, tol: 0.02,
+      s: ["Заполнение: 6 по 20 000,00, 5 по 20 000,25, ещё 4 по 20 000,50 (6 + 5 + 4 = 15).", "Сколько переплатили сверх 20 000,00: 6 × 0 + 5 × 0,25 + 4 × 0,50 = 0 + 1,25 + 2,00 = 3,25 пункта на всю заявку.", "Средняя переплата: 3,25 / 15 = 0,2167 пункта. Средняя цена 20 000,2167.", "В тиках: 0,2167 / 0,25 ≈ 0,87 тика."] },
+    { c: "of", q: "За бар по аску прошло 2 350 контрактов, по биду 2 910. Чему равна дельта бара?", t: "num", a: -560, tol: 0.5,
+      s: ["Δ = V_ask − V_bid.", "2 350 − 2 910 = −560.", "Минус: агрессивных продаж больше на 560 контрактов."] },
+    { c: "of", q: "CVD к началу часа = 1 200. Дельты следующих трёх баров: +300, −450, −150. Чему равен CVD?", t: "num", a: 900, tol: 0.5,
+      s: ["CVD копит дельты: прибавляем по очереди.", "1 200 + 300 = 1 500; 1 500 − 450 = 1 050; 1 050 − 150 = 900."] },
+    { c: "of", q: "На цене p по аску купили 360, на тик ниже по биду продали 100. Порог R = 3. Это имбаланс покупок?", t: "mc", o: ["Да, 3,6 ≥ 3", "Нет, сравнивать надо с бидом на той же цене", "Нет, 360 − 100 = 260 меньше 300"], a: 0,
+      s: ["Сравнение диагональное: A(p) / B(p − тик).", "360 / 100 = 3,6.", "3,6 ≥ 3 → имбаланс покупок есть. Вариант с разностью неверен: имбаланс — это отношение, а не разность."] },
+    { c: "of", q: "Весь объём сессии 20 000 контрактов. Сколько объёма должно войти в value area?", t: "num", a: 14000, tol: 0.5,
+      s: ["Value area — 70% объёма.", "0,7 × 20 000 = 14 000."] },
+    { c: "of", q: "Три бара ES: 5 800 × 2 000 контрактов, 5 810 × 1 000, 5 790 × 1 000. Чему равен VWAP?", t: "num", a: 5800, tol: 0.05,
+      s: ["Числитель Σp·v: 5 800 × 2 000 = 11 600 000; 5 810 × 1 000 = 5 810 000; 5 790 × 1 000 = 5 790 000.", "Сумма: 23 200 000.", "Знаменатель Σv = 4 000.", "VWAP = 23 200 000 / 4 000 = 5 800."] },
+    { c: "of", q: "Цена NQ сделала новый максимум дня, а CVD остался ниже своего предыдущего пика. Как это читать?", t: "mc", o: ["Подтверждение тренда: можно покупать пробой", "Дивергенция: рост на слабой агрессии, повод искать шорт-триггер у уровня", "Абсорбция покупок: точно разворот"], a: 1,
+      s: ["Новый максимум цены без нового максимума CVD — дивергенция.", "Покупатели давят слабее, чем на прошлом пике.", "Это фон, а не вход: нужен триггер (истощение, дельта в сторону разворота) у заранее найденного уровня."] },
+    { c: "of", q: "В стакане на биде стабильно видно 20 контрактов, а в ленте по этой цене продали 380, и цена не ушла ниже. Какой примерно скрытый объём?", t: "num", a: 360, tol: 0.5,
+      s: ["V_hidden ≈ V_traded − V_shown.", "380 − 20 = 360 контрактов.", "Это признак айсберга на покупку."] },
+    { c: "op", q: "Пут со страйком 5 800. На экспирации SPX = 5 740. Сколько пунктов выплата?", t: "num", a: 60, tol: 0.01,
+      s: ["Put = max(K − S, 0).", "5 800 − 5 740 = 60.", "max(60, 0) = 60 пунктов, то есть $6 000 на контракт."] },
+    { c: "op", q: "SPX = 6 000, VIX = 24. Какое примерное движение за день (в пунктах) по правилу 16?", t: "num", a: 90, tol: 0.5,
+      s: ["EM ≈ S × IV / 16.", "IV = 0,24. 0,24 / 16 = 0,015 = 1,5%.", "6 000 × 0,015 = 90 пунктов."] },
+    { c: "op", q: "Дилер продал 20 коллов с дельтой 0,40 (по 100 акций). Сколько акций он купит для хеджа?", t: "num", a: 800, tol: 0.5,
+      s: ["Короткие коллы дают дельту −0,40 × 100 × 20 = −800.", "Чтобы обнулить, дилер покупает 800 акций."] },
+    { c: "op", q: "Дельта колла 0,40, гамма 0,05. Актив вырос на 2. Какой станет дельта (приблизительно)?", t: "num", a: 0.5, tol: 0.005,
+      s: ["Изменение дельты ≈ Γ × dS = 0,05 × 2 = 0,10.", "0,40 + 0,10 = 0,50."] },
+    { c: "op", q: "Sweep: 1 500 контрактов по 2,10. Сколько долларов премии?", t: "num", a: 315000, tol: 0.5,
+      s: ["Премия = цена × 100 × контракты.", "2,10 × 100 = 210 долларов за контракт.", "210 × 1 500 = 315 000."] },
+    { c: "op", q: "Вчера OI страйка 8 000, сегодня 11 200. Чему равно изменение OI?", t: "num", a: 3200, tol: 0.5,
+      s: ["ΔOI = 11 200 − 8 000 = 3 200.", "Открыли на 3 200 контрактов больше, чем закрыли."] },
+    { c: "gx", q: "Пут: Γ = 0,002, OI = 5 000, SPX = 6 000. Чему равен GEX страйка в миллионах долларов на 1%? (со знаком)", t: "num", a: -360, tol: 0.5,
+      s: ["Для путов знак минус: GEX = −Γ × OI × 100 × S² × 0,01.", "0,002 × 5 000 = 10; × 100 = 1 000.", "S² = 36 000 000; 1 000 × 36 000 000 = 36 000 000 000.", "× 0,01 = 360 000 000. Со знаком: −$360 млн."] },
+    { c: "gx", q: "Суммарный GEX: −0,3 млрд при 5 700 и +0,5 млрд при 5 710. Где gamma flip?", t: "num", a: 5703.75, tol: 0.05,
+      s: ["Ноль лежит между 5 700 и 5 710.", "Доля пути: 0,3 / (0,3 + 0,5) = 0,375.", "5 700 + 10 × 0,375 = 5 703,75."] },
+    { c: "gx", q: "SPX ниже gamma flip, VIX растёт, term structure перевёрнута. Какой подход логичнее внутри дня?", t: "mc", o: ["Фейдить экстремумы и ждать возврата к VWAP", "Торговать пробои по тренду с ретестом и держать цели дальше", "Ничего не меняется, режим не важен"], a: 1,
+      s: ["Ниже flip дилеры в короткой гамме: хеджирование разгоняет движение.", "Перевёрнутая term structure и рост VIX подтверждают стресс.", "Значит, пробои чаще продолжаются: сетап C, цели дальше, стопы шире."] },
+    { c: "gx", q: "Put wall по QQQ = 480. NQ = 20 160, QQQ = 504. Какой это уровень на NQ?", t: "num", a: 19200, tol: 0.5,
+      s: ["Коэффициент NQ / QQQ = 20 160 / 504 = 40.", "480 × 40 = 19 200."] },
+    { c: "gx", q: "Call wall SPX = 5 900. ES = 5 925, SPX = 5 895. Какой уровень на ES?", t: "num", a: 5930, tol: 0.05,
+      s: ["Базис = ES − SPX = 5 925 − 5 895 = 30.", "5 900 + 30 = 5 930."] },
+    { c: "3d", q: "C(99) = 4,10, C(100) = 4,60, C(101) = 5,16. Оцени гамму при S = 100 конечной разностью (h = 1).", t: "num", a: 0.06, tol: 0.002,
+      s: ["Γ ≈ [C(S+h) − 2C(S) + C(S−h)] / h².", "5,16 − 2 × 4,60 + 4,10 = 5,16 − 9,20 + 4,10 = 0,06.", "Делим на 1² = 1 → Γ ≈ 0,06."] },
+    { c: "3d", q: "IV 25Δ-колла = 11%, 25Δ-пута = 17,5%. Чему равен risk reversal в пунктах?", t: "num", a: -6.5, tol: 0.01,
+      s: ["RR = IV колла − IV пута.", "11 − 17,5 = −6,5 пункта.", "Отрицательный RR — обычное состояние индексов: путы дороже."] },
+    { c: "3d", q: "IV на 30 дней = 30%, на 90 дней = 22%. Есть ли календарный арбитраж по полной дисперсии?", t: "mc", o: ["Да, IV падает со сроком — это арбитраж", "Нет: w₃₀ ≈ 0,0074, w₉₀ ≈ 0,0119, дисперсия растёт со сроком", "Нельзя сказать без страйков"], a: 1,
+      s: ["w = σ² × T.", "30 дней: 0,09 × 0,0822 = 0,0074.", "90 дней: 0,0484 × 0,2466 = 0,0119.", "0,0119 ≥ 0,0074 → арбитража нет. Перевёрнутая IV ещё не значит арбитраж."] },
+    { c: "tr", q: "Риск на сделку $200. Стоп 8 пунктов NQ. Сколько MNQ можно взять?", t: "num", a: 12, tol: 0.01,
+      s: ["8 пунктов = 32 тика.", "MNQ: 32 × $0,50 = $16 риска на контракт.", "200 / 16 = 12,5 → округляем вниз: 12 MNQ."] },
+    { c: "tr", q: "Winrate 40%, средняя прибыль 2,5R, средний убыток 1R. Чему равно ожидание в R?", t: "num", a: 0.4, tol: 0.005,
+      s: ["E = p × W − (1 − p) × L.", "0,4 × 2,5 = 1,0; 0,6 × 1 = 0,6.", "E = 1,0 − 0,6 = +0,4R на сделку."] },
+    { c: "tr", q: "Положительная гамма. ES пробил VAH на всплеске покупок, но через 2 бара вернулся под VAH, CVD развернулся вниз. Что это?", t: "mc", o: ["Инициативный пробой: покупать ретест", "Провалившийся пробой: шорт на возврате, стоп за экстремум, цель POC", "Абсорбция продаж: покупать"], a: 1,
+      s: ["Пробой на агрессии и быстрый возврат внутрь — пробившие в ловушке.", "Положительная гамма поддерживает возврат к середине.", "Это сетап B: шорт под VAH, стоп за максимум пробоя, цель POC, затем VAL."] }
+  ];
+  var CAT = { of: "Ордер флоу", op: "Опционы", gx: "GEX", "3d": "3D", tr: "Торговля" };
+  var KEY = "flowschool.trainer.v1", state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { state = {}; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { } }
+  function parseNum(s) { s = String(s).replace(/\s/g, "").replace(/−/g, "-").replace(",", "."); return s === "" ? NaN : Number(s); }
+  var filter = "all";
+  function solHtml(t) { return '<div class="sol"><b>Разбор</b><ol>' + t.s.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol></div>"; }
+  function renderTrainer() {
+    var h = "";
+    TASKS.forEach(function (t, i) {
+      if (filter !== "all" && t.c !== filter) return;
+      var st = state[i], ok = st && st.ok, done = !!st;
+      h += '<div class="q" data-i="' + i + '"><div class="qt"><span>' + (i + 1) + " · " + CAT[t.c] + '</span><span class="st ' + (done ? (ok ? "ok" : "bad") : "") + '">' + (done ? (ok ? "верно" : "неверно") : "") + "</span></div><p>" + t.q + "</p>";
+      if (t.t === "num") {
+        h += '<div class="row"><input type="text" inputmode="decimal" id="ans' + i + '" aria-label="Ответ к задаче ' + (i + 1) + '" value="' + (done ? st.v : "") + '"><button class="btn primary" type="button" data-check="' + i + '">Проверить</button><button class="btn" type="button" data-show="' + i + '">Показать решение</button></div>';
+        if (done) h += '<p class="out">' + (ok ? "Верно." : "Правильный ответ: " + fmt(t.a, t.a % 1 ? 2 : 0) + ".") + "</p>" + solHtml(t);
+      } else {
+        h += '<div class="opts">' + t.o.map(function (o, j) {
+          var cls = done ? (j === t.a ? "ok" : (st.v === j ? "bad" : "")) : "";
+          return '<button type="button" class="' + cls + '" data-mc="' + i + '" data-j="' + j + '">' + o + "</button>";
+        }).join("") + "</div>";
+        if (done) h += solHtml(t);
+      }
+      h += "</div>";
+    });
+    $("#tList").innerHTML = h;
+    var n = 0, c = 0; for (var k in state) { n++; if (state[k].ok) c++; }
+    $("#tScore").textContent = "Решено " + n + " из " + TASKS.length + " · верно " + c;
+  }
+  function wireTrainer() {
+    $("#tList").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.hasAttribute("data-check")) {
+        var i = +b.getAttribute("data-check"), t = TASKS[i], v = parseNum($("#ans" + i).value);
+        if (isNaN(v)) { $("#ans" + i).focus(); return; }
+        state[i] = { v: $("#ans" + i).value, ok: Math.abs(v - t.a) <= t.tol };
+      } else if (b.hasAttribute("data-show")) {
+        var i2 = +b.getAttribute("data-show");
+        state[i2] = { v: "", ok: false };
+      } else if (b.hasAttribute("data-mc")) {
+        var i3 = +b.getAttribute("data-mc"); if (state[i3]) return;
+        var j = +b.getAttribute("data-j");
+        state[i3] = { v: j, ok: j === TASKS[i3].a };
+      } else return;
+      save(); renderTrainer();
+    });
+    $("#tList").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target.id && e.target.id.indexOf("ans") === 0) {
+        var btn = document.querySelector('[data-check="' + e.target.id.slice(3) + '"]'); if (btn) btn.click();
+      }
+    });
+    seg("#trainer", "f", function (f) { filter = f; renderTrainer(); });
+    $("#tReset").addEventListener("click", function () { state = {}; save(); renderTrainer(); });
+  }
+
+  /* ======================= ROUTER ======================= */
+  var ORDER = ["start", "orderflow", "options", "gex", "surfaces", "playbook", "trainer", "limits"];
+  var PLOTS = { orderflow: [renderCvd], options: [renderOpt], gex: [renderGex], surfaces: [renderPx3d, renderIv, renderGex3d] };
+  var current = null;
+  function show(id, scroll) {
+    if (ORDER.indexOf(id) < 0) id = "start";
+    current = id;
+    $$("section.ch").forEach(function (s) { s.classList.toggle("on", s.id === id); });
+    $$("#chips .chip").forEach(function (c) {
+      var on = c.getAttribute("href") === "#" + id;
+      if (on) { c.setAttribute("aria-current", "page"); c.scrollIntoView({ block: "nearest", inline: "center" }); } else c.removeAttribute("aria-current");
+    });
+    var i = ORDER.indexOf(id), p = ORDER[i - 1], n = ORDER[i + 1], h = "";
+    function title(x) { return document.getElementById(x).getAttribute("data-title"); }
+    if (p) h += '<a href="#' + p + '"><small>Назад</small>' + title(p) + "</a>";
+    if (n) h += '<a class="nx" href="#' + n + '"><small>Дальше</small>' + title(n) + "</a>";
+    $("#pager").innerHTML = h;
+    if (scroll) window.scrollTo(0, 0);
+    // plotly needs visible containers
+    requestAnimationFrame(function () { (PLOTS[id] || []).forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); });
+  }
+  function rerenderPlots() { (PLOTS[current] || []).forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); }
+
+  /* ======================= WIRING ======================= */
+  $("#bookQ").addEventListener("input", renderBook);
+  seg("#w-cvd", "s", function (s) { cvdScenario = s; renderCvd(); });
+  $("#fpR").addEventListener("input", renderFp);
+  seg("#w-vp", "v", function (v) { vpShape = v; renderVp(); });
+  seg("#w-opt", "t", function (v) { optType = v; renderOpt(); });
+  ["#oS", "#oK", "#oD", "#oV"].forEach(function (s) { $(s).addEventListener("input", renderOpt); });
+  seg("#w-hedge", "g", function (v) { hedgeMode = v; renderHedge(); });
+  $("#hS").addEventListener("input", renderHedge);
+  seg("#w-gex", "m", function (v) { gexMetric = v; renderGex(); });
+  ["#gS", "#gD"].forEach(function (s) { $(s).addEventListener("input", renderGex); });
+  seg("#w-px3d", "z", function (v) { pxZ = v; renderPx3d(); });
+  seg("#w-iv3d", "r", function (v) { ivRegime = v; renderIv(); });
+  renderBook(); renderFp(); renderVp(); renderHedge();
+  wireTrainer(); renderTrainer();
+
+  window.addEventListener("hashchange", function () { show(location.hash.slice(1), true); });
+  show(location.hash.slice(1), false);
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerenderPlots); } catch (e) { }
+  new MutationObserver(rerenderPlots).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  // exposed for quick checks
+  window.__flow = { bs: bs, totalGex: totalGex, findFlip: findFlip };
+})();
+
+</script>
+
+</body>
+</html>
